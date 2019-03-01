@@ -19,5 +19,4 @@ public class MessageAction {
     public static final String UPDATE_LAST_VERSION = "UPDATE_LAST_VERSION";
     public static final String NEED_TO_CHECK = "NEED_TO_CHECK";
     public static final String STOP_CHECKING = "STOP_CHECKING";
-
 }
