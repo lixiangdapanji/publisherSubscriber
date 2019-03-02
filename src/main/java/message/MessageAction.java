@@ -1,3 +1,5 @@
+package message;
+
 public class MessageAction {
     public static final String NEW_FEED = "NEW_FEED";
     public static final String OK = "OK";

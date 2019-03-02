@@ -1,3 +1,5 @@
+package publisher;
+
 public class Publisher {
     public Publisher() {
 

@@ -74,6 +74,6 @@ crashlytics.properties
 crashlytics-build.properties
 fabric.properties
 
-# Editor-based Rest Subscriber
+# Editor-based Rest subscriber.Subscriber
 .idea/httpRequests
 
