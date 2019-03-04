@@ -17,6 +17,7 @@ public class Broker {
     private String ip = "127.0.0.1";
     private int port ;
     private JSONParser parser;
+    private String id;
 
     //server -> client list map; Key: server ip addr:port:topic; value: client list(client: ip:port)
     private Map<String, Set<String>> serverClientMap;
@@ -31,6 +32,7 @@ public class Broker {
     public Broker(String ip, int port) {
         this.ip = ip;
         this.port = port;
+        id = ip + ":" + port;
         serverClientMap = new HashMap<>();
         topicServerMap = new HashMap<>();
         routingMap = new HashMap<>();
@@ -106,17 +108,98 @@ public class Broker {
     }
 
 
+    /**
+     * build spanning tree
+     * @param message
+     */
     private void buildSpanningTree(JSONObject message) {
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
         String brokers = (String)content.get("brokers");
-        Map<String, Integer> map = new HashMap<>();
         String[] brokerlist = brokers.split(",");
-        for(int i = 0; i < brokerlist.length; i++){
-            map.put(brokerlist[i], i);
+
+        List<Integer> red = new ArrayList<>();
+        List<Integer> blue = new ArrayList<>();
+
+        Random random = new Random();
+        int n = brokerlist.length;
+        for(int i = 0; i < n; i++){
+            blue.add(i);
         }
 
-        int[][] graph = new int[brokerlist.length][brokerlist.length];
+        int[][] graph = new int[n][n];
+        int start = random.nextInt(n);
+        red.add(start);
+        blue.remove(start);
+
+        while(blue.size() > 0){
+            int b = random.nextInt(blue.size());
+            int r = random.nextInt(red.size());
+            graph[red.get(r)][blue.get(b)] = 1;
+            graph[blue.get(b)][red.get(r)] = 1;
+            blue.remove(b);
+        }
+
+        List<String[]> pairs = new ArrayList<>();
+        for(int i = 0; i < n; i++){
+            for(int j = i + 1; j < n; j++){
+                if(graph[i][j] == 1){
+                    pairs.add(new String[]{brokerlist[i], brokerlist[j]});
+                }
+            }
+        }
+
+        for(String[] pair : pairs){
+            String server1 = pair[0];
+            String server2 = pair[1];
+            if(server1.equals(id)){
+                if(!routingMap.containsKey(topic)){
+                    routingMap.put(topic, new HashSet<>());
+                }
+                routingMap.get(topic).add(server2);
+            }else if(server2.equals(id)){
+                if(!routingMap.containsKey(topic)){
+                    routingMap.put(topic, new HashSet<>());
+                }
+                routingMap.get(topic).add(server1);
+            }else{
+                sendEdge(topic, server1, server2);
+                sendEdge(topic, server2, server1);
+            }
+        }
+
+    }
+
+    /**
+     * tell server1 that it connect with server2 on specific topic
+     * @param topic
+     * @param server1
+     * @param server2
+     */
+    private void sendEdge(String topic, String server1, String server2){
+        JSONObject message = new JSONObject();
+        message.put("sender", id);
+        message.put("action", MessageAction.ADD_EDGE);
+        JSONObject content = new JSONObject();
+        content.put("topic", topic);
+        content.put("server", server2);
+        message.put("content", content);
+
+
+        String ip = server1.split(":")[0];
+        int port = Integer.valueOf(server1.split(":")[1]);
+        try {
+            Socket socket = new Socket(ip, port);
+            socket.setSoTimeout(1000);
+
+            PrintStream printStream = new PrintStream(socket.getOutputStream());
+            printStream.println(message.toJSONString());
+            printStream.flush();
+            printStream.close();
+            socket.close();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
 
     }
 
@@ -141,10 +224,10 @@ public class Broker {
                 socket = new Socket(ip, port);
                 socket.setSoTimeout(1000);
 
-                Writer writer = new OutputStreamWriter(socket.getOutputStream());
-                writer.write(message.toJSONString());
-                writer.flush();
-                writer.close();
+                PrintStream printStream = new PrintStream(socket.getOutputStream());
+                printStream.println(message.toJSONString());
+                printStream.flush();
+                printStream.close();
                 socket.close();
             }catch (Exception e){
                 e.printStackTrace();
@@ -153,6 +236,11 @@ public class Broker {
         }
     }
 
+
+    /**
+     *add server on topic. in a spanning tree.
+     * @param message
+     */
     private void addEdge(JSONObject message){
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
@@ -168,7 +256,7 @@ public class Broker {
     }
 
     /**
-     *
+     * Every server need to add server to its topic server map
      * @param message{sender: zookeeper,
      *               action: ADD_SERVER,
      *               content: {topic: topic_name,
@@ -186,6 +274,10 @@ public class Broker {
         routingServer(topic, message);
     }
 
+    /**
+     *Send message to clients.
+     * @param message
+     */
     private void sendMsg(JSONObject message) {
         JSONObject content = (JSONObject) message.get("content");
         String topic = (String)content.get("topic");
@@ -201,10 +293,10 @@ public class Broker {
                 socket = new Socket(ip, port);
                 socket.setSoTimeout(1000);
 
-                Writer writer = new OutputStreamWriter(socket.getOutputStream());
-                writer.write(message.toJSONString());
-                writer.flush();
-                writer.close();
+                PrintStream printStream = new PrintStream(socket.getOutputStream());
+                printStream.println(message.toJSONString());
+                printStream.flush();
+                printStream.close();
                 socket.close();
             }catch (Exception e){
                 e.printStackTrace();
@@ -216,6 +308,13 @@ public class Broker {
 
     }
 
+    //Todo 1: addToSpanningtree. Add a new server to spanning tree.
+    //Todo 2: delete server
+    //Todo 3: write to log
+
+    /**
+     * inner thread class. Responsible to handle all kinds of actions.
+     */
     private class Handler extends Thread{
         private Socket socket;
 
@@ -270,10 +369,10 @@ public class Broker {
 
     public void run(){
         try {
+
             ServerSocket serverSocket = new ServerSocket(port);
             System.out.println("Listening on port: " + port);
             while (true){
-
                 Socket socket = serverSocket.accept();
                 Handler handler = new Handler(socket);
                 handler.run();
@@ -292,5 +391,6 @@ public class Broker {
         Broker broker = new Broker("127.0.0.1", port);
         broker.run();
     }
+
 
 }
