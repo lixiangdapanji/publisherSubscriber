@@ -311,6 +311,7 @@ public class Broker {
     //Todo 1: addToSpanningtree. Add a new server to spanning tree.
     //Todo 2: delete server
     //Todo 3: write to log
+    //Todo 4: register on zookeeper
 
     /**
      * inner thread class. Responsible to handle all kinds of actions.
@@ -369,7 +370,6 @@ public class Broker {
 
     public void run(){
         try {
-
             ServerSocket serverSocket = new ServerSocket(port);
             System.out.println("Listening on port: " + port);
             while (true){
