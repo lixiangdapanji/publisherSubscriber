@@ -1,35 +1,51 @@
 package subscriber;
 
 import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashSet;
+import java.util.HashMap;
 
-import java.util.Set;
+import java.util.Map;
 
+/**
+ *
+ */
 public class Subscriber {
 
     private String subscriberAddr;
     private int subscriberPort;
 
-    private String zookeeperAddr ;
+    private String zookeeperAddr;
     private int zookeeperPort;
 
-    private Set<String> topicSet = new HashSet<>();
+    private Map<String, Integer> topicMap;
 
+    /**
+     * @param subscriberAddr
+     * @param subscriberPort
+     * @param zookeeperAddr
+     * @param zookeeperPort
+     */
     public Subscriber(String subscriberAddr, int subscriberPort, String zookeeperAddr, int zookeeperPort) {
         this.subscriberAddr = subscriberAddr;
         this.subscriberPort = subscriberPort;
         this.zookeeperAddr = zookeeperAddr;
         this.zookeeperPort = zookeeperPort;
-
+        topicMap = new HashMap<>();
     }
 
+
+    /**
+     * @param topic
+     */
     public void registerTopic(String topic) {
-        topicSet = new HashSet<>();
-        topicSet.add(topic);
+        if (!topicMap.containsKey(topic)) {
+            throw new IllegalArgumentException("Publisher does not support this topic");
+        }
 
         JSONObject obj = new JSONObject();
         JSONObject topicObj = new JSONObject();
@@ -41,25 +57,113 @@ public class Subscriber {
 
         try {
             Socket socket = new Socket(zookeeperAddr, zookeeperPort);
-            OutputStreamWriter oos = new OutputStreamWriter(socket.getOutputStream());
-            oos.write(obj.toJSONString());
-            InputStreamReader ois = new InputStreamReader(socket.getInputStream());
+            //send request
+            OutputStreamWriter ous = new OutputStreamWriter(socket.getOutputStream());
+            ous.write(obj.toJSONString());
+
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
+    /**
+     *
+     */
     //从zookeeper知道有哪些topic可以用
     //又一个
     private void getTopic() {
+        try {
+            Socket socket = new Socket(zookeeperAddr, zookeeperPort);
+            //send request
+            JSONObject request = new JSONObject();
+            request.put("sender", subscriberAddr + subscriberPort);
+            request.put("action", "GET_TOPIC");
+            request.put("content", new JSONObject());
+            OutputStreamWriter ous = new OutputStreamWriter(socket.getOutputStream());
+            ous.write(request.toJSONString());
 
+            //get response
+            InputStreamReader ins = new InputStreamReader(socket.getInputStream());
+            String in = ins.toString();
+            JSONParser parser = new JSONParser();
+            JSONObject response = (JSONObject) parser.parse(in);
+            String content = (String) response.get("content");
+            String[] topics = content.split(",");
+            for (String s : topics) {
+                topicMap.put(s, -1);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
     }
 
+    /**
+     * @throws IOException
+     */
     public void start() throws IOException {
         ServerSocket serverSocket = new ServerSocket(subscriberPort);
-        while (true){
+        while (true) {
             Socket socket = serverSocket.accept();
             SubscriberThread subscriberThread = new SubscriberThread(socket);
             subscriberThread.start();
+        }
+    }
+
+    class SubscriberThread extends Thread {
+        private Socket socket;
+
+        public SubscriberThread(Socket socket) {
+            this.socket = socket;
+        }
+
+        @Override
+        public void run() {
+            try {
+                InputStreamReader ins = new InputStreamReader(socket.getInputStream());
+
+                String in = ins.toString();
+                JSONParser parser = new JSONParser();
+                JSONObject jsonObject = (JSONObject) parser.parse(in);
+                String action = (String)jsonObject.get("action");
+                if (action.equals("SEND_MESSAGE")) {
+                    JSONObject content = (JSONObject) jsonObject.get("content");
+                    String sender = (String) jsonObject.get("sender");
+                    String[] serverID = sender.split(":");
+                    String topic = (String) content.get("topic");
+                    String message = (String) content.get("message");
+                    int id = (int)jsonObject.get("id");
+
+                    topicMap.put(topic, topicMap.getOrDefault(topic, 0) + 1);
+                    if (topicMap.get(topic) < id) {
+                        //notify server message missing
+                        JSONObject obj = new JSONObject();
+                        obj.put("sender", serverID[0] + serverID[1]);
+                        obj.put("action", "MISSING_MESSAGE");
+                        try {
+                            Socket socket = new Socket(zookeeperAddr, zookeeperPort);
+                            //send request
+                            OutputStreamWriter ous = new OutputStreamWriter(socket.getOutputStream());
+                            ous.write(obj.toJSONString());
+
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
+                    } else {
+                        System.out.println(message);
+                    }
+                }
+
+                ins.close();
+                socket.close();
+            } catch (ParseException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 }

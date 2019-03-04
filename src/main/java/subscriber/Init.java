@@ -13,10 +13,10 @@ public class Init {
             int ZOOKEEPER_PORT = 8889;
             String TOPIC = "";
 
-            Subscriber subscriber = new Subscriber(SUBSCRIBER1_ADDR, SUBSCRIBER1_PORT, ZOOKEEPER_ADDR, ZOOKEEPER_PORT);
-            subscriber.registerTopic(TOPIC);
+            Subscriber subscriber1 = new Subscriber(SUBSCRIBER1_ADDR, SUBSCRIBER1_PORT, ZOOKEEPER_ADDR, ZOOKEEPER_PORT);
+            //subscriber1.registerTopic(TOPIC);
             System.out.println("Subscriber on " + SUBSCRIBER1_ADDR + ":"+ SUBSCRIBER1_PORT + " register with topic " + TOPIC);
-            subscriber.start();
+            subscriber1.start();
 
             //SUBSCRIBER2
             //SUBSCRIBER3
