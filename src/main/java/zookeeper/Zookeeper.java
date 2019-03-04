@@ -16,45 +16,61 @@ public class Zookeeper {
 
     //private Map<String, Set<String>> ServerClientMap = new HashMap<>();
     private Map<String, Set<String>> TopicToSever = new HashMap<>();
-    private Set<String> server = new HashSet<>();
+    private Set<String> serverSet = new HashSet<>();
     private Map<String, String> leaderMap = new HashMap<>();
     private Map<String, Set<String>> serverTopicSet = new HashMap<>();
     private int zookeeper_port = 8889;
-    private int groupSize = 5;
+    private int defaultGroupSize = 5;
 
     private void run() {
         int count = 0;
+        ServerSocket listener = null;
         try {
-            ServerSocket listener = new ServerSocket(zookeeper_port);
+            listener = new ServerSocket(zookeeper_port);
             System.out.println("Server listening at port " + zookeeper_port);
+        } catch (Exception e) {
+            System.out.println("Exception starting zookeeper.");
+            System.out.println(e.getMessage());
+        }
 
-            while (true) {
+        while (true) {
+            try {
                 Socket conn = listener.accept();
+                System.out.println("connected");
                 BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                Writer writer = new OutputStreamWriter(conn.getOutputStream());
+                //DataInputStream in = new DataInputStream(conn.getInputStream());
+                //Writer writer = new OutputStreamWriter(conn.getOutputStream());
+                //DataOutputStream out = new DataOutputStream(conn.getOutputStream());
+                PrintStream out = new PrintStream(conn.getOutputStream());
                 JSONObject sent = new JSONObject();
 
-                StringBuilder sb = new StringBuilder();
-                String inputLine;
-                while((inputLine = reader.readLine())!=null){
-                    sb.append(inputLine);
-                }
+                //StringBuilder sb = new StringBuilder();
+                String inputLine = reader.readLine();
+                //while((inputLine = reader.readLine())!=null){
+                    //System.out.println(inputLine);
+                    //sb.append(inputLine);
+                //}
+
+                //String sb = in.readUTF();
                 JSONParser parser = new JSONParser();
-                JSONObject json = (JSONObject) parser.parse(sb.toString());
+                JSONObject json = (JSONObject) parser.parse(inputLine);
+                //JSONObject json = (JSONObject) parser.parse(sb);
                 String action = (String) json.get("action");
+                System.out.println(action);
                 if (action.equals("NEW_TOPIC")) {
                     if (count == 0) {
                         sent.put("action", "NEW_TOPIC");
                         sent.put("content", "127.0.0.1:8080");
                         count++;
-                        writer.write(sent.toString());
-                        writer.flush();
+                        //writer.write(sent.toString());
+                        //writer.flush();
                     } else {
                         sent.put("action", "NEW_TOPIC");
                         sent.put("content", "127.0.0.1:8889");
-                        writer.write(sent.toString());
-                        writer.flush();
+                        //writer.write(sent.toString());
+                        //writer.flush();
                     }
+                    out.println(sent.toString());
                 }
                 if (action.equals("NEW_FEED")) {
                     JSONObject content = (JSONObject) json.get("content");
@@ -63,12 +79,13 @@ public class Zookeeper {
                     System.out.println(topic + ": " + msg);
                 }
 
-                reader.close();
-                writer.close();
+                //reader.close();
+                //writer.close();
                 conn.close();
+            } catch (Exception e) {
+                System.out.println("Exception handling connection");
+                System.out.println(e.getMessage());
             }
-        } catch (Exception e) {
-            System.out.println(e.getMessage());
         }
     }
 
@@ -85,11 +102,19 @@ public class Zookeeper {
     }
 
     private void addTopic(String topic){
-
+        formGroup(topic);
+        leaderElection(topic);
     }
 
     private void formGroup(String topic){
+        //determine group size
+        int size = serverSet.size();
+        if(size>defaultGroupSize){
+            size = defaultGroupSize;
+        }
 
+        //select brokers
+        String[] brokers = serverSet.toArray(new String[serverSet.size()]);
     }
 
     private void leaderElection(String topic) {
@@ -100,6 +125,9 @@ public class Zookeeper {
 
 
             if (noticeTopicLeader(topic)) return;
+            else{
+
+            }
         }
     }
 
@@ -150,6 +178,12 @@ public class Zookeeper {
 
         //if leader is offline, run leader election and get the new leader info
         while(!checkAlive(leaderAddr)){
+            serverSet.remove(leaderAddr);
+            Set<String> brokers = TopicToSever.get(topic);
+            brokers.remove(leaderAddr);
+            if(brokers.size()==0){
+                formGroup(topic);
+            }
             leaderElection(topic);
             leaderAddr = leaderMap.get(topic);
         }
