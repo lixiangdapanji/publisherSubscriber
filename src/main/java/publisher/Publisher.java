@@ -38,8 +38,8 @@ public class Publisher {
         msg.put("action", "NEW_FEED");
 
         JSONObject content = new JSONObject();
-        content.put("topic", topicList.get((int)(Math.random()*size)));
-        content.put("msg","a new message");
+        content.put("topic", topicList.get((int) (Math.random() * size)));
+        content.put("msg", "a new message");
 
         msg.put("content", content);
 
@@ -56,10 +56,11 @@ public class Publisher {
         sent.put("action", "NEW_TOPIC");
         sent.put("content", topic);
 
-        try{
+        try {
             client = new Socket(zookeeper_ip, zookeeper_port);
             writer = new OutputStreamWriter(client.getOutputStream());
             writer.write(sent.toString());
+            writer.flush();
 
             /*
             received message { sender: zookeeper,
@@ -67,25 +68,29 @@ public class Publisher {
                                content: broker addr }
              */
             reader = new BufferedReader(new InputStreamReader(client.getInputStream()));
-            String recv = reader.readLine();
+            StringBuilder sb = new StringBuilder();
+            String inputLine;
+            while((inputLine = reader.readLine())!=null){
+                sb.append(inputLine);
+            }
             JSONParser parser = new JSONParser();
-            JSONObject json = (JSONObject) parser.parse(recv);
-            brokerAddr = (String)json.get("content");
+            JSONObject json = (JSONObject) parser.parse(sb.toString());
+            brokerAddr = (String) json.get("content");
 
             writer.close();
             reader.close();
             client.close();
-        }catch(UnknownHostException e){
+        } catch (UnknownHostException e) {
             System.out.println("Zookeeper not found!");
-            e.printStackTrace();
-        }catch(Exception e){
-            e.printStackTrace();
-        }finally{
-            try{
-                if(client!=null)
+            System.out.println(e.getMessage());
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        } finally {
+            try {
+                if (client != null)
                     client.close();
-            }catch(Exception e){
-                e.printStackTrace();
+            } catch (Exception e) {
+                System.out.println(e.getMessage());
             }
         }
 
@@ -93,52 +98,53 @@ public class Publisher {
     }
 
     private void sendMsg(String brokerAddr, String topic, JSONObject msg) {
-        //parse brokerAddr XXXX:XXXX
+        //parse brokerAddr ip:port
         int i = brokerAddr.indexOf(":");
-        String ip = brokerAddr.substring(0,i);
-        int port = Integer.parseInt(brokerAddr.substring(i+1));
+        String ip = brokerAddr.substring(0, i);
+        int port = Integer.parseInt(brokerAddr.substring(i + 1));
 
         Socket client = null;
         Writer writer = null;
-        while(true){
-            try{
-                client = new Socket(ip,port);
+        while (true) {
+            try {
+                client = new Socket(ip, port);
                 writer = new OutputStreamWriter(client.getOutputStream());
                 writer.write(msg.toString());
+                writer.flush();
 
                 writer.close();
                 client.close();
                 break;
-            }catch(Exception e){
-                e.printStackTrace();
+            } catch (Exception e) {
+                System.out.println(e.getMessage());
                 brokerAddr = getServerAddr(topic);
-                topicBrokerMap.replace(topic,brokerAddr);
-            }finally {
-                try{
-                    if(client!=null)
+                topicBrokerMap.replace(topic, brokerAddr);
+            } finally {
+                try {
+                    if (client != null)
                         client.close();
-                }catch(Exception e){
-                    e.printStackTrace();
+                } catch (Exception e) {
+                    System.out.println(e.getMessage());
                 }
             }
         }
 
     }
 
-    private void run(){
-        while(true){
+    private void run() {
+        while (true) {
             //create message
             JSONObject msg = CreateMsg();
 
             //parse msg topic
-            JSONObject content = (JSONObject)msg.get("content");
-            String topic = (String)content.get("topic");
+            JSONObject content = (JSONObject) msg.get("content");
+            String topic = (String) content.get("topic");
             String brokerAddr = null;
-            if(topicBrokerMap.containsKey(topic))
+            if (topicBrokerMap.containsKey(topic))
                 brokerAddr = topicBrokerMap.get(topic);
-            else{
+            else {
                 brokerAddr = getServerAddr(topic);
-                topicBrokerMap.put(topic,brokerAddr);
+                topicBrokerMap.put(topic, brokerAddr);
             }
 
             //send msg
@@ -147,7 +153,7 @@ public class Publisher {
         }
     }
 
-    public static void main(String[] args){
+    public static void main(String[] args) {
         Publisher pub = new Publisher();
         pub.run();
     }
