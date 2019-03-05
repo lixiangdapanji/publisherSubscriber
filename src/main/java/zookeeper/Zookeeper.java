@@ -246,9 +246,5 @@ public class Zookeeper {
 
     }
 
-    public static void main(String[] args) {
-        Zookeeper zookeeper = new Zookeeper();
-        zookeeper.run();
-    }
 }
 
