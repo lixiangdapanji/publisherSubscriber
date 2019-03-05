@@ -52,14 +52,16 @@ public class Subscriber {
 
         topicObj.put("topic", topic);
 
-        obj.put("sender", subscriberAddr + subscriberPort);
+        obj.put("sender", subscriberAddr + ":" + subscriberPort);
+        obj.put("action", "CLIENT_REGISTER");
         obj.put("content", topicObj);
 
         try {
             Socket socket = new Socket(zookeeperAddr, zookeeperPort);
             //send request
-            OutputStreamWriter ous = new OutputStreamWriter(socket.getOutputStream());
-            ous.write(obj.toJSONString());
+            PrintStream out = new PrintStream(socket.getOutputStream());
+            out.println(obj);
+            socket.close();
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -79,12 +81,13 @@ public class Subscriber {
             request.put("sender", subscriberAddr + subscriberPort);
             request.put("action", "GET_TOPIC");
             request.put("content", new JSONObject());
-            OutputStreamWriter ous = new OutputStreamWriter(socket.getOutputStream());
-            ous.write(request.toJSONString());
+            PrintStream out = new PrintStream(socket.getOutputStream());
+            out.println(request);
 
             //get response
-            InputStreamReader ins = new InputStreamReader(socket.getInputStream());
-            String in = ins.toString();
+            //InputStreamReader ins = new InputStreamReader(socket.getInputStream());
+            BufferedReader ins = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String in = ins.readLine();
             JSONParser parser = new JSONParser();
             JSONObject response = (JSONObject) parser.parse(in);
             String content = (String) response.get("content");
@@ -92,7 +95,7 @@ public class Subscriber {
             for (String s : topics) {
                 topicMap.put(s, -1);
             }
-
+            socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ParseException e) {
@@ -122,9 +125,8 @@ public class Subscriber {
         @Override
         public void run() {
             try {
-                InputStreamReader ins = new InputStreamReader(socket.getInputStream());
-
-                String in = ins.toString();
+                BufferedReader ins = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                String in = ins.readLine();
                 JSONParser parser = new JSONParser();
                 JSONObject jsonObject = (JSONObject) parser.parse(in);
                 String action = (String)jsonObject.get("action");
@@ -139,14 +141,14 @@ public class Subscriber {
                     topicMap.put(topic, topicMap.getOrDefault(topic, 0) + 1);
                     if (topicMap.get(topic) < id) {
                         //notify server message missing
-                        JSONObject obj = new JSONObject();
-                        obj.put("sender", serverID[0] + serverID[1]);
-                        obj.put("action", "MISSING_MESSAGE");
+                        JSONObject request = new JSONObject();
+                        request.put("sender", serverID[0] + serverID[1]);
+                        request.put("action", "MISSING_MESSAGE");
                         try {
                             Socket socket = new Socket(zookeeperAddr, zookeeperPort);
                             //send request
-                            OutputStreamWriter ous = new OutputStreamWriter(socket.getOutputStream());
-                            ous.write(obj.toJSONString());
+                            PrintStream out = new PrintStream(socket.getOutputStream());
+                            out.println(request);
 
                         } catch (IOException e) {
                             e.printStackTrace();

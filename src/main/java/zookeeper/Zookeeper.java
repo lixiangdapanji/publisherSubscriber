@@ -14,7 +14,7 @@ public class Zookeeper {
 
     }
 
-    //private Map<String, Set<String>> ServerClientMap = new HashMap<>();
+    private Map<String, Set<String>> ServerClientMap = new HashMap<>();
     private Map<String, Set<String>> TopicToSever = new HashMap<>();
     private Set<String> serverSet = new HashSet<>();
     private Map<String, String> leaderMap = new HashMap<>();
@@ -77,6 +77,15 @@ public class Zookeeper {
                     String topic = (String) content.get("topic");
                     String msg = (String) content.get("msg");
                     System.out.println(topic + ": " + msg);
+                }
+                if (action.equals("CLIENT_REGISTER")) {
+                    JSONObject content = (JSONObject) json.get("content");
+                    String sender = (String) content.get("sender");
+                    String topic = (String) content.get("topic");
+                    String msg = (String) content.get("msg");
+                    System.out.println("IP address + PortNum" + sender);
+                    System.out.println(topic + ": " + msg);
+
                 }
 
                 //reader.close();
