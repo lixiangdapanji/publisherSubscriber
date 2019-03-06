@@ -43,8 +43,9 @@ public class BrokerLoad {
         }
     }
 
-    public Set<String> chooseKey(int k) {
-        Set<String> ans = new HashSet<>();
+    public List<String> chooseKey(int k) {
+        List<String> ans = new ArrayList<>();
+
         Bucket bucket = head.next;
         while (k > bucket.set.size()) {
             ans.addAll(bucket.set);
