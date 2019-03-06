@@ -1,10 +1,5 @@
 package broker;
 
-<<<<<<< HEAD
-import jdk.nashorn.internal.runtime.ECMAException;
-import message.Message;
-=======
->>>>>>> master
 import message.MessageAction;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -368,6 +363,17 @@ public class Broker {
     }
 
     /**
+     *
+     * @param message{sender: zookeeper,
+     *               action: server failed,
+     *               content:{topic: topic,
+     *                        broker: serverID}}
+     */
+    private void delFromSpanningTree(JSONObject message){
+
+    }
+
+    /**
      * send synchronize data to another server
      * @param serverID
      */
@@ -628,9 +634,4 @@ public class Broker {
         broker.init();
         broker.run();
     }
-<<<<<<< HEAD
-
-
-=======
->>>>>>> master
 }
