@@ -48,12 +48,9 @@ public class Publisher {
 
     private String getServerAddr(String topic) {
         Socket client = null;
-        //Writer writer = null;
         BufferedReader reader = null;
         String brokerAddr = null;
-        //DataInputStream in=null;
-        //DataOutputStream out = null;
-        PrintStream out = null;
+        PrintStream writer = null;
 
         JSONObject sent = new JSONObject();
         sent.put("action", "NEW_TOPIC");
@@ -61,33 +58,22 @@ public class Publisher {
 
         try {
             client = new Socket(zookeeper_ip, zookeeper_port);
-            //writer = new OutputStreamWriter(client.getOutputStream());
-            //writer.write(sent.toString());
-            //writer.flush();
-            //out=new DataOutputStream(client.getOutputStream());
-            //out.writeUTF(sent.toString());
-            out = new PrintStream(client.getOutputStream());
-            out.println(sent.toString());
+            writer = new PrintStream(client.getOutputStream());
+            writer.println(sent.toString());
             /*
             received message { sender: zookeeper,
                                topic: topic,
                                content: broker addr }
              */
             reader = new BufferedReader(new InputStreamReader(client.getInputStream()));
-            //StringBuilder sb = new StringBuilder();
             String inputLine = reader.readLine();
-            //while ((inputLine = reader.readLine()) != null) {
-                //sb.append(inputLine);
-            //}
-            //in = new DataInputStream(client.getInputStream());
-            //String sb = in.readUTF();
+
             JSONParser parser = new JSONParser();
             JSONObject json = (JSONObject) parser.parse(inputLine);
-            //JSONObject json = (JSONObject) parser.parse(sb);
             brokerAddr = (String) json.get("content");
 
-            //writer.close();
-            //reader.close();
+            writer.close();
+            reader.close();
             client.close();
         } catch (Exception e) {
             System.out.println("Exception in getServerAddr.");
@@ -107,7 +93,6 @@ public class Publisher {
 
     private void sendMsg(String brokerAddr, String topic, JSONObject msg) {
         Socket client = null;
-        //Writer writer = null;
         while (true) {
             try {
                 //parse brokerAddr ip:port
@@ -116,12 +101,9 @@ public class Publisher {
                 int port = Integer.parseInt(brokerAddr.substring(i + 1));
 
                 client = new Socket(ip, port);
-                //writer = new OutputStreamWriter(client.getOutputStream());
-                //writer.write(msg.toString());
-                //writer.flush();
-                PrintStream out = new PrintStream(client.getOutputStream());
-                out.println(msg.toString());
-                //writer.close();
+                PrintStream writer = new PrintStream(client.getOutputStream());
+                writer.println(msg.toString());
+
                 client.close();
                 break;
             } catch (Exception e) {
