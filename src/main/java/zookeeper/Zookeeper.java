@@ -36,8 +36,8 @@ public class Zookeeper {
             return;
         }
 
-        Routine routine = new Routine(20000);
-        routine.start();
+        //Routine routine = new Routine(20000);
+        //routine.start();
 
         ExecutorService threadPool = Executors.newCachedThreadPool();
 
@@ -75,7 +75,7 @@ public class Zookeeper {
                     }
 
                     if (reallocate)
-                        allocateServer(null);
+                        allocateServer("");
                 }
 
                 try {
@@ -90,8 +90,8 @@ public class Zookeeper {
 
     private void allocateServer(String brokerAddr) {
 
-        if (brokerAddr == null) {
-            if (serverSet.size() > defaultGroupSize) return;
+        if (brokerAddr.equals("")) {
+            if (serverSet.size() < defaultGroupSize) return;
             Set<String> topics = getTopicSet();
             for (String topic : topics) {
                 int size = TopicToSever.get(topic).size();
@@ -103,7 +103,7 @@ public class Zookeeper {
                     int port = Integer.parseInt(leaderAddr.substring(i + 1));
 
                     JSONObject msg = new JSONObject();
-                    msg.put("action", "ADD_BROKER");
+                    msg.put("action", "ADD_NEW_BROKER");
                     JSONObject content = new JSONObject();
                     content.put("topic", topic);
 
@@ -183,9 +183,9 @@ public class Zookeeper {
         }
     }
 
-    private void getServerCount() {
+    //private void getServerCount() {
 
-    }
+    //}
 
     private Set<String> getTopicSet() {
         return TopicToSever.keySet();
@@ -313,8 +313,10 @@ public class Zookeeper {
     private void addServer(String topic, String brokerAddr) {
         serverSet.add(brokerAddr);
         loads.inc(brokerAddr);
-        if (topic == null) {
-            allocateServer(brokerAddr);
+        if (topic.equals("")) {
+            //allocateServer(brokerAddr);
+            serverSet.add(brokerAddr);
+            loads.inc(brokerAddr);
         } else {
             loads.inc(brokerAddr);
 
@@ -332,7 +334,7 @@ public class Zookeeper {
             } else {
                 String leaderAddr = leaderMap.get(topic);
                 JSONObject msg = new JSONObject();
-                msg.put("action", "ADD_BROKER");
+                msg.put("action", "ADD_NEW_BROKER");
                 JSONObject content = new JSONObject();
                 content.put("topic", topic);
                 content.put("broker", brokerAddr);
@@ -366,7 +368,7 @@ public class Zookeeper {
             String leaderAddr = leaderMap.get(topic);
             if (leaderAddr != null) {
                 JSONObject msg = new JSONObject();
-                msg.put("action", "BROKER_FAIL");
+                msg.put("action", "SERVER_FAIL");
                 JSONObject content = new JSONObject();
                 content.put("topic", topic);
                 content.put("broker", brokerAddr);
@@ -395,7 +397,7 @@ public class Zookeeper {
 
         if (leaderAddr != null) {
             JSONObject msg = new JSONObject();
-            msg.put("action", "ALLOCATE_CLIENT");
+            msg.put("action", "ADD_CLIENT");
             JSONObject content = new JSONObject();
             content.put("topic", topic);
             content.put("client", clientAddr);
@@ -497,6 +499,20 @@ public class Zookeeper {
                     } else {
                         sent.put("content", "fail");
                     }
+                    writer.println(sent.toString());
+                } else if(action.equals("BROKER_REG")){
+                    String brokerAddr = (String)json.get("sender");
+                    String topic = (String)json.get("content");
+                    addServer(topic,brokerAddr);
+                } else if(action.equals("GET_TOPIC")){
+                    Set<String> topicSet = getTopicSet();
+                    StringBuilder topics = new StringBuilder();
+                    for (String topic : topicSet) {
+                        topics.append(topic + ",");
+                    }
+                    topics.deleteCharAt(topics.length() - 1);
+                    sent.put("action","TOPICS");
+                    sent.put("content",topics.toString());
                     writer.println(sent.toString());
                 }
 

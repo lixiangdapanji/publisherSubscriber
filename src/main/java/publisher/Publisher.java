@@ -18,10 +18,6 @@ public class Publisher {
     public Publisher() {
         //initial topic list
         topicList.add("Topic_1");
-        topicList.add("Topic_2");
-        topicList.add("Topic_3");
-        topicList.add("Topic_4");
-        topicList.add("Topic_5");
     }
 
     private JSONObject CreateMsg() {
@@ -138,9 +134,8 @@ public class Publisher {
             if (topicBrokerMap.containsKey(topic))
                 brokerAddr = topicBrokerMap.get(topic);
             else {
-                while (brokerAddr == null) {
-                    brokerAddr = getServerAddr(topic);
-                }
+                brokerAddr = getServerAddr(topic);
+                if(brokerAddr==null) continue;
                 topicBrokerMap.put(topic, brokerAddr);
                 System.out.println(brokerAddr);
             }
