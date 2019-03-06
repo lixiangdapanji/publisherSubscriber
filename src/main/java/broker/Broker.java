@@ -3,18 +3,27 @@ package broker;
 import message.MessageAction;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+import sun.nio.cs.ext.IBM037;
+import util.AllOne;
+import util.JsonUtil;
 
 
 import java.io.*;
+import java.net.ConnectException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Broker {
 
     private String ip = "127.0.0.1";
     private int port ;
     private JSONParser parser;
+    private String id;
+    private AllOne allOne;
 
     //server -> client list map; Key: server ip addr:port:topic; value: client list(client: ip:port)
     private Map<String, Set<String>> serverClientMap;
@@ -25,22 +34,61 @@ public class Broker {
     private Map<String, Set<String>> routingMap;
 
     //给message编号
-    private int msgCount;
+    private AtomicInteger msgCount;
+
+    public Broker(){
+    }
+
     public Broker(String ip, int port) {
-        this.ip = ip;
-        this.port = port;
+        setIPAndPort(ip, port);
+        init();
+    }
+
+    public void init(){
         serverClientMap = new HashMap<>();
         topicServerMap = new HashMap<>();
         routingMap = new HashMap<>();
-        msgCount = 0;
+        msgCount = new AtomicInteger(0);
         parser = new JSONParser();
+        allOne = new AllOne();
     }
+
+    public void setIPAndPort(String ip, int port){
+        this.ip = ip;
+        this.port = port;
+        id = ip + ":" + port;
+    }
+
+
+    /**
+     * leader receive new feed. Add count to this message and routing server to send message to all clients.
+     * @param message{sender: zookeeper,
+     *               action: NEW_FEED,
+     *               content:{topic:topic,
+     *                        message: message}}
+     */
+    private void newFeed(JSONObject message){
+        JSONObject content = (JSONObject) message.get("content");
+        String topic = (String)content.get("topic");
+        String messagecontent = (String) message.get("message");
+
+        int num = msgCount.getAndIncrement();
+        content.put("ID", num);
+        JSONObject object = new JSONObject();
+        object.put("sender", id);
+        object.put("action", MessageAction.SEND_MESSAGE);
+        object.put("content", content);
+        sendMsg(object);
+        routingServer(topic, object);
+    }
+
 
     /**
      * add client
      * @param message {sender: broker,
      *                action: ADD_CLIENT,
-     *                content:{server: ip:port,
+     *                content:{topic: topic
+     *                         server: ip:port,
      *                         client: ip:port}}
      */
     private void addClient(JSONObject message) {
@@ -48,10 +96,13 @@ public class Broker {
             JSONObject content = (JSONObject) message.get("content");
             String serverId = (String)content.get("server");
             String clientId = (String)content.get("client");
-            if(!serverClientMap.containsKey(serverId)){
-                serverClientMap.put(serverId, new HashSet<>());
+            String topic = (String)content.get("topic");
+            String key = serverId + ":" + topic;
+            if(!serverClientMap.containsKey(key)){
+                serverClientMap.put(key, new HashSet<>());
             }
-            serverClientMap.get(serverId).add(clientId);
+            serverClientMap.get(key).add(clientId);
+            allOne.inc(serverId);
         }catch (Exception e){
             e.printStackTrace();
         }
@@ -90,31 +141,133 @@ public class Broker {
      * load balancing choosing a server to control this client.
      * @param message {sender: zookeeper,
      *                action: ALLOCATE_CLIENT,
-     *                content:{topic: [topic 1, topic 2, topic 3],
+     *                content:{topic: topic 1,
      *                          client: clientId}}
      */
     private void allocateClient(JSONObject message) {
 
-        //Todo: implement a load balancing algo.
         try {
+            JSONObject content = (JSONObject) message.get("content");
+            String topic = (String)content.get("topic");
+            String clientId = (String)content.get("client");
+            String minLoad = allOne.getMinKey();
 
+            JSONObject addClient = new JSONObject();
+            addClient.put("sender", id);
+            addClient.put("action", "ADD_CLIENT");
+            JSONObject sendContent = new JSONObject();
+            sendContent.put("topic", topic);
+            sendContent.put("server", minLoad);
+            sendContent.put("client", clientId);
+            addClient.put("content", sendContent);
+
+            addClient(addClient);
+            routingServer(topic, addClient);
         }catch (Exception e){
             e.printStackTrace();
         }
     }
 
 
+    /**
+     * build spanning tree
+     * @param message{sender: zookeeper,
+     *               action: BUILD_SPANNING_TREE,
+     *               content:{topic: topic,
+     *                        brokers: "server1, server2"}
+     */
     private void buildSpanningTree(JSONObject message) {
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
         String brokers = (String)content.get("brokers");
-        Map<String, Integer> map = new HashMap<>();
         String[] brokerlist = brokers.split(",");
-        for(int i = 0; i < brokerlist.length; i++){
-            map.put(brokerlist[i], i);
+
+        for(String broker : brokerlist){
+            allOne.inc(broker);
         }
 
-        int[][] graph = new int[brokerlist.length][brokerlist.length];
+        List<Integer> red = new ArrayList<>();
+        List<Integer> blue = new ArrayList<>();
+
+        Random random = new Random();
+        int n = brokerlist.length;
+        for(int i = 0; i < n; i++){
+            blue.add(i);
+        }
+
+        int[][] graph = new int[n][n];
+        int start = random.nextInt(n);
+        red.add(start);
+        blue.remove(start);
+
+        while(blue.size() > 0){
+            int b = random.nextInt(blue.size());
+            int r = random.nextInt(red.size());
+            graph[red.get(r)][blue.get(b)] = 1;
+            graph[blue.get(b)][red.get(r)] = 1;
+            blue.remove(b);
+        }
+
+        List<String[]> pairs = new ArrayList<>();
+        for(int i = 0; i < n; i++){
+            for(int j = i + 1; j < n; j++){
+                if(graph[i][j] == 1){
+                    pairs.add(new String[]{brokerlist[i], brokerlist[j]});
+                }
+            }
+        }
+
+        for(String[] pair : pairs){
+            String server1 = pair[0];
+            String server2 = pair[1];
+            if(server1.equals(id)){
+                if(!routingMap.containsKey(topic)){
+                    routingMap.put(topic, new HashSet<>());
+                }
+                routingMap.get(topic).add(server2);
+            }else if(server2.equals(id)){
+                if(!routingMap.containsKey(topic)){
+                    routingMap.put(topic, new HashSet<>());
+                }
+                routingMap.get(topic).add(server1);
+            }else{
+                sendEdge(topic, server1, server2);
+                sendEdge(topic, server2, server1);
+            }
+        }
+
+    }
+
+    /**
+     * tell server1 that it connect with server2 on specific topic
+     * @param topic
+     * @param server1
+     * @param server2
+     */
+    private void sendEdge(String topic, String server1, String server2){
+        JSONObject message = new JSONObject();
+        message.put("sender", id);
+        message.put("action", MessageAction.ADD_EDGE);
+        JSONObject content = new JSONObject();
+        content.put("topic", topic);
+        content.put("server", server2);
+        message.put("content", content);
+
+
+        String ip = server1.split(":")[0];
+        int port = Integer.valueOf(server1.split(":")[1]);
+        try {
+            Socket socket = new Socket(ip, port);
+            socket.setSoTimeout(1000);
+
+            PrintStream printStream = new PrintStream(socket.getOutputStream());
+            printStream.println(message.toJSONString());
+            printStream.flush();
+            printStream.close();
+            socket.close();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
 
     }
 
@@ -131,7 +284,11 @@ public class Broker {
         }
         Set<String> serverSet = routingMap.get(topic);
         Socket socket;
+        String sender = (String)message.get("sender");
         for(String serverID : serverSet){
+            if(serverID.equals(sender)){
+                continue;
+            }
             String[] server = serverID.split(":");
             String ip = server[0];
             int port = Integer.valueOf(server[1]);
@@ -139,10 +296,10 @@ public class Broker {
                 socket = new Socket(ip, port);
                 socket.setSoTimeout(1000);
 
-                Writer writer = new OutputStreamWriter(socket.getOutputStream());
-                writer.write(message.toJSONString());
-                writer.flush();
-                writer.close();
+                PrintStream printStream = new PrintStream(socket.getOutputStream());
+                printStream.println(message.toJSONString());
+                printStream.flush();
+                printStream.close();
                 socket.close();
             }catch (Exception e){
                 e.printStackTrace();
@@ -151,6 +308,11 @@ public class Broker {
         }
     }
 
+
+    /**
+     *add server on topic. in a spanning tree.
+     * @param message
+     */
     private void addEdge(JSONObject message){
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
@@ -161,12 +323,99 @@ public class Broker {
         routingMap.get(topic).add(serverId);
     }
 
-    private void allocateServer(JSONObject message){
 
+    /**
+     * add a new server to spanning tree
+     * @param message{sender: zookeeper,
+     *               action: ADD_NEW_BROKER,
+     *               content: {topic: topic,
+     *                         broker: server}
+     */
+    private void addToSpanningTree(JSONObject message){
+        JSONObject content = (JSONObject) message.get("content");
+        String topic = (String)content.get("topic");
+        String serverID = (String)content.get("broker");
+
+        Set<String> serverSet = topicServerMap.get(topic);
+        int idx = (int) (Math.random() * serverSet.size());
+        String needToAdd = null;
+        for(String server : serverSet){
+            needToAdd = server;
+            if(idx == 0){
+                break;
+            }
+            idx--;
+        }
+
+        sendEdge(topic, needToAdd, serverID);
+        sendEdge(topic, serverID, needToAdd);
+
+        sendSynchronizeData(serverID);
+
+        JSONObject addServerObject = new JSONObject();
+        addServerObject.put("sender", id);
+        addServerObject.put("action", MessageAction.ADD_SERVER);
+        JSONObject sendContent = new JSONObject();
+        sendContent.put("topic", topic);
+        sendContent.put("server", serverID);
+        addServerObject.put("content", sendContent);
+        routingServer(topic, addServerObject);
     }
 
     /**
      *
+     * @param message{sender: zookeeper,
+     *               action: server failed,
+     *               content:{topic: topic,
+     *                        broker: serverID}}
+     */
+    private void delFromSpanningTree(JSONObject message){
+
+    }
+
+    /**
+     * send synchronize data to another server
+     * @param serverID
+     */
+    private void sendSynchronizeData(String serverID){
+        JSONObject serverClientObject = JsonUtil.mapToJson(serverClientMap);
+        JSONObject topicServerObject = JsonUtil.mapToJson(topicServerMap);
+
+        JSONObject message = new JSONObject();
+        message.put("sender", id);
+        message.put("action", MessageAction.SYNCHRONIZE);
+        message.put("server_client_map", serverClientObject);
+        message.put("topic_server", topicServerObject);
+        try {
+            String[] server = serverID.split(":");
+            String ip = server[0];
+            int port = Integer.valueOf(server[1]);
+
+            Socket socket = new Socket(ip, port);
+            PrintStream printStream = new PrintStream(socket.getOutputStream());
+            printStream.println(message.toJSONString());
+            printStream.flush();
+            printStream.close();
+            socket.close();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+
+    }
+
+    /**
+     * synchronize data from leader.
+     * @param message
+     */
+    private void synchronizedData(JSONObject message){
+        JSONObject serverClientObject = (JSONObject)message.get("server_client_map");
+        JSONObject topicServerObject = (JSONObject)message.get("topic_server");
+        serverClientMap = JsonUtil.jsonToMap(serverClientObject);
+        topicServerMap = JsonUtil.jsonToMap(topicServerObject);
+    }
+
+    /**
+     * Every server need to add server to its topic server map
      * @param message{sender: zookeeper,
      *               action: ADD_SERVER,
      *               content: {topic: topic_name,
@@ -184,6 +433,10 @@ public class Broker {
         routingServer(topic, message);
     }
 
+    /**
+     *Send message to clients.
+     * @param message
+     */
     private void sendMsg(JSONObject message) {
         JSONObject content = (JSONObject) message.get("content");
         String topic = (String)content.get("topic");
@@ -199,21 +452,89 @@ public class Broker {
                 socket = new Socket(ip, port);
                 socket.setSoTimeout(1000);
 
-                Writer writer = new OutputStreamWriter(socket.getOutputStream());
-                writer.write(message.toJSONString());
-                writer.flush();
-                writer.close();
+                PrintStream printStream = new PrintStream(socket.getOutputStream());
+                printStream.println(message.toJSONString());
+                printStream.flush();
+                printStream.close();
                 socket.close();
             }catch (Exception e){
                 e.printStackTrace();
             }
         }
+        routingServer(topic, message);
     }
 
+    //Todo 3: write to log
     private void writeToLog() {
 
     }
 
+
+    /**
+     * delete server
+     * @param message
+     */
+    private void deleteServer(JSONObject message){
+        JSONObject content = (JSONObject) message.get("content");
+        String topic = (String)content.get("topic");
+        String serverId = (String)content.get("server");
+        if(topicServerMap.containsKey(topic)){
+            topicServerMap.get(topic).remove(serverId);
+        }
+        String key = serverId + ":" + topic;
+        if(serverClientMap.containsKey(key)){
+            serverClientMap.remove(key);
+        }
+
+    }
+
+
+    /**
+     * register broker on zookeeper
+     * @param ip
+     * @param port
+     * @return
+     */
+    public  boolean register(String ip, int port) {
+        JSONObject object = new JSONObject();
+        object.put("sender", id);
+        object.put("action", MessageAction.BROKER_REG);
+        object.put("content", "");
+        boolean success = false;
+        try {
+            Socket socket = new Socket(ip, port);
+            PrintStream printStream = new PrintStream(socket.getOutputStream());
+            printStream.println(object.toJSONString());
+            printStream.flush();
+            printStream.close();
+
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while((line = bufferedReader.readLine()) != null){
+                sb.append(line);
+            }
+            JSONObject message = (JSONObject)parser.parse(sb.toString());
+            String action = (String)message.get("action");
+            if(action.equals(MessageAction.OK)){
+                success = true;
+            }
+            socket.close();
+        }catch (UnknownHostException e){
+            System.out.println("Unknown host!");
+        }catch (ConnectException e){
+            System.out.println("Connection Error! Please check wether zookeeper is alive!");
+        }catch (IOException e){
+            System.out.println("IO Error!");
+        }catch (ParseException e){
+            System.out.println("Message received is not Json Object!");
+        }
+        return success;
+    }
+
+    /**
+     * inner thread class. Responsible to handle all kinds of actions.
+     */
     private class Handler extends Thread{
         private Socket socket;
 
@@ -243,7 +564,7 @@ public class Broker {
                         addServer(object);
                         break;
                     case MessageAction.DEL_SERVER:
-
+                        deleteServer(object);
                         break;
                     case MessageAction.ALLOCATE_CLIENT:
                         allocateClient(object);
@@ -256,6 +577,15 @@ public class Broker {
                         break;
                     case MessageAction.ADD_EDGE:
                         addEdge(object);
+                        break;
+                    case MessageAction.ADD_NEW_BROKER:
+                        addToSpanningTree(object);
+                        break;
+                    case MessageAction.SYNCHRONIZE:
+                        synchronizedData(object);
+                        break;
+                    case MessageAction.NEW_FEED:
+                        newFeed(object);
                         break;
                 }
 
@@ -271,7 +601,6 @@ public class Broker {
             ServerSocket serverSocket = new ServerSocket(port);
             System.out.println("Listening on port: " + port);
             while (true){
-
                 Socket socket = serverSocket.accept();
                 Handler handler = new Handler(socket);
                 handler.run();
@@ -283,11 +612,26 @@ public class Broker {
     }
 
     public static void main(String[] args){
-        int port = 8888;
+        int port = 10000;
+        Broker broker = new Broker();
         Scanner scanner = new Scanner(System.in);
+        boolean success = false;
+        while(!success){
+            System.out.println("Please input zookeeper IP address:");
+            String zookeeperIp = scanner.next();
+            System.out.println("Please input zookeeper port number: ");
+            int zookeeperPort = scanner.nextInt();
+            if(!broker.register(zookeeperIp, zookeeperPort)){
+                System.out.println("Register failed!");
+            }else{
+                System.out.println("Register succeed!");
+                success = true;
+            }
+        }
         System.out.print("Please input port number: ");
         port = scanner.nextInt();
-        Broker broker = new Broker("127.0.0.1", port);
+        broker.setIPAndPort("127.0.0.1", port);
+        broker.init();
         broker.run();
     }
 }
