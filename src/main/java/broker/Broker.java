@@ -576,6 +576,9 @@ public class Broker {
                     case MessageAction.SYNCHRONIZE:
                         synchronizedData(object);
                         break;
+                    case MessageAction.NEW_FEED:
+                        newFeed(object);
+                        break;
                 }
 
             }catch (Exception e){
