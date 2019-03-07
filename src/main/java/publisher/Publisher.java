@@ -8,8 +8,9 @@ import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
-public class Publisher {
+public class Publisher extends Thread{
     private final String zookeeper_ip = "127.0.0.1";
     private int zookeeper_port = 8889;
     private Map<String, String> topicBrokerMap = new HashMap<>();
@@ -90,17 +91,19 @@ public class Publisher {
     private void sendMsg(String brokerAddr, String topic, JSONObject msg) {
         Socket client = null;
         while (true) {
+
             try {
                 //parse brokerAddr ip:port
                 int i = brokerAddr.indexOf(":");
                 String ip = brokerAddr.substring(0, i);
                 int port = Integer.parseInt(brokerAddr.substring(i + 1));
 
+                System.out.println("sending message to " + ip + ":" + port);
                 client = new Socket(ip, port);
                 PrintStream writer = new PrintStream(client.getOutputStream());
                 writer.println(msg.toString());
 
-                client.close();
+                //client.close();
                 break;
             } catch (Exception e) {
                 System.out.println("Exception in sendMsg.");
@@ -108,20 +111,25 @@ public class Publisher {
                 brokerAddr = getServerAddr(topic);
                 topicBrokerMap.replace(topic, brokerAddr);
             } finally {
-                if (client != null) {
-                    try {
-                        client.close();
-                    } catch (Exception e) {
-                        System.out.println(e.getMessage());
-                    }
-                }
+//                if (client != null) {
+//                    try {
+//                        client.close();
+//                    } catch (Exception e) {
+//                        System.out.println(e.getMessage());
+//                    }
+//                }
             }
         }
 
     }
 
-    private void run() {
+    public void run() {
         while (true) {
+            try {
+                sleep(10000);
+            }catch (Exception e){
+                e.printStackTrace();
+            }
             //create message
             JSONObject msg = CreateMsg();
 
@@ -142,6 +150,7 @@ public class Publisher {
 
             //send msg
             sendMsg(brokerAddr, topic, msg);
+
 
         }
     }

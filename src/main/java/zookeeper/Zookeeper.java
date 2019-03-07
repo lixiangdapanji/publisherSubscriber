@@ -1,5 +1,6 @@
 package zookeeper;
 
+import message.MessageAction;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
@@ -192,8 +193,13 @@ public class Zookeeper {
     }
 
     private void formGroup(String topic) {
+
         //determine group size
         int size = serverSet.size();
+        System.out.println("Forming group from " + size + " brokers");
+        if(size == 0){
+            return;
+        }
         if (size > defaultGroupSize) {
             size = defaultGroupSize;
         }
@@ -239,7 +245,7 @@ public class Zookeeper {
     private void noticeTopicLeader(String topic) {
         //tell the topic leader to build spanning tree for routing message
         String leaderAddr = leaderMap.get(topic);
-
+        System.out.println("notice leader: " + leaderAddr);
         if (leaderAddr != null) {
             int i = leaderAddr.indexOf(":");
             String ip = leaderAddr.substring(0, i);
@@ -264,6 +270,7 @@ public class Zookeeper {
                 Socket client = new Socket(ip, port);
                 PrintStream writer = new PrintStream(client.getOutputStream());
                 writer.println(msg.toString());
+                System.out.println(ip + ":" + port);
             } catch (Exception e) {
                 System.out.println("error in notice leader");
                 System.out.println(e.getMessage());
@@ -311,6 +318,7 @@ public class Zookeeper {
     //}
 
     private void addServer(String topic, String brokerAddr) {
+        System.out.println("Adding server: " + brokerAddr);
         serverSet.add(brokerAddr);
         loads.inc(brokerAddr);
         if (topic.equals("")) {
@@ -393,11 +401,12 @@ public class Zookeeper {
     }
 
     private boolean addClient(String topic, String clientAddr) {
+        System.out.println("add client on " + topic + ", client address: " + clientAddr);
         String leaderAddr = leaderMap.get(topic);
 
         if (leaderAddr != null) {
             JSONObject msg = new JSONObject();
-            msg.put("action", "ADD_CLIENT");
+            msg.put("action", MessageAction.ALLOCATE_CLIENT);
             JSONObject content = new JSONObject();
             content.put("topic", topic);
             content.put("client", clientAddr);
@@ -478,19 +487,20 @@ public class Zookeeper {
                 JSONObject json = (JSONObject) parser.parse(inputLine);
                 String action = (String) json.get("action");
 
+                System.out.println("Action: " + action);
                 //for "NEW_TOPIC", return topic leader info to publisher
                 if (action.equals("NEW_TOPIC")) {
                     //content is topic
                     String topic = (String) json.get("content");
 
                     String leaderAddr = getLeaderInfo(topic);
-
+                    System.out.println("leader address : " + leaderAddr);
                     sent.put("action", "NEW_TOPIC");
                     sent.put("content", leaderAddr);
                     writer.println(sent.toString());
                 } else if (action.equals("CLIENT_REGISTER")) {
                     JSONObject content = (JSONObject) json.get("content");
-                    String sender = (String) content.get("sender");
+                    String sender = (String) json.get("sender");
                     String topic = (String) content.get("topic");
 
                     sent.put("action", "CLIENT_REGISTER");

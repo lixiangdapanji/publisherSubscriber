@@ -26,7 +26,7 @@ public class MessageAction {
     public static final String BUILD_SPANNING_TREE = "BUILD_SPANNING_TREE";
     public static final String SEND_MESSAGE = "SEND_MESSAGE";
     public static final String ADD_EDGE = "ADD_EDGE";
-    public static final String BROKER_REG = "BROKER_REGISTER";
+    public static final String BROKER_REG = "BROKER_REG";
     public static final String SYNCHRONIZE = "SYNCHRONIZE";
 
 }
