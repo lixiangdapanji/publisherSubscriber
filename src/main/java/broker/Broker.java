@@ -4,6 +4,7 @@ import message.MessageAction;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
+import org.omg.PortableInterceptor.SYSTEM_EXCEPTION;
 import sun.nio.cs.ext.IBM037;
 import util.AllOne;
 import util.JsonUtil;
@@ -68,18 +69,21 @@ public class Broker {
      *                        message: message}}
      */
     private void newFeed(JSONObject message){
+        System.out.println("newFeed is called.");
         JSONObject content = (JSONObject) message.get("content");
         String topic = (String)content.get("topic");
-        String messagecontent = (String) message.get("message");
+        String messagecontent = (String) message.get("msg");
 
         int num = msgCount.getAndIncrement();
-        content.put("ID", num);
+        content.put("id", num);
+        //content.put("message", messagecontent);
         JSONObject object = new JSONObject();
         object.put("sender", id);
         object.put("action", MessageAction.SEND_MESSAGE);
         object.put("content", content);
+
         sendMsg(object);
-        routingServer(topic, object);
+        //routingServer(topic, object);
     }
 
 
@@ -92,6 +96,7 @@ public class Broker {
      *                         client: ip:port}}
      */
     private void addClient(JSONObject message) {
+        System.out.println("addclient is called.");
         try {
             JSONObject content = (JSONObject) message.get("content");
             String serverId = (String)content.get("server");
@@ -117,6 +122,7 @@ public class Broker {
      * @return count of changes. -1:exception.
      */
     private int delClient(JSONObject message) {
+        System.out.println("delClient is called.");
         try{
             int count = 0;
             JSONObject content = (JSONObject) message.get("content");
@@ -145,7 +151,7 @@ public class Broker {
      *                          client: clientId}}
      */
     private void allocateClient(JSONObject message) {
-
+        System.out.println("allocateClient is called.");
         try {
             JSONObject content = (JSONObject) message.get("content");
             String topic = (String)content.get("topic");
@@ -160,7 +166,7 @@ public class Broker {
             sendContent.put("server", minLoad);
             sendContent.put("client", clientId);
             addClient.put("content", sendContent);
-
+            System.out.println("Add client : " + addClient.toString());
             addClient(addClient);
             routingServer(topic, addClient);
         }catch (Exception e){
@@ -177,6 +183,7 @@ public class Broker {
      *                        brokers: "server1, server2"}
      */
     private void buildSpanningTree(JSONObject message) {
+        System.out.println("buildSpanningTree is called.");
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
         String brokers = (String)content.get("brokers");
@@ -191,6 +198,7 @@ public class Broker {
 
         Random random = new Random();
         int n = brokerlist.length;
+        //System.out.println("buildSpanningTree " + n + " brokers");
         for(int i = 0; i < n; i++){
             blue.add(i);
         }
@@ -215,6 +223,13 @@ public class Broker {
                     pairs.add(new String[]{brokerlist[i], brokerlist[j]});
                 }
             }
+        }
+
+        for(int i = 0; i < n; i++){
+            for(int j = 0; j < n; j++){
+                System.out.print(graph[i][j] + " ");
+            }
+            System.out.println();
         }
 
         for(String[] pair : pairs){
@@ -245,6 +260,7 @@ public class Broker {
      * @param server2
      */
     private void sendEdge(String topic, String server1, String server2){
+        System.out.println("sendEdge is called.");
         JSONObject message = new JSONObject();
         message.put("sender", id);
         message.put("action", MessageAction.ADD_EDGE);
@@ -279,6 +295,7 @@ public class Broker {
      *                content:____}
      */
     private void routingServer(String topic, JSONObject message) {
+        System.out.println("routingServer is called.");
         if(!routingMap.containsKey(topic)){
             return;
         }
@@ -314,6 +331,7 @@ public class Broker {
      * @param message
      */
     private void addEdge(JSONObject message){
+        System.out.println("addEdge is called.");
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
         String serverId = (String)content.get("server");
@@ -443,6 +461,10 @@ public class Broker {
         String serverId = ip + ":" + port;
         String key = serverId + ":" + topic;
         Set<String> clientSet = serverClientMap.get(key);
+        if(clientSet == null || clientSet.size() == 0){
+            System.out.println("Currently no clients!");
+            return;
+        }
 
         Socket socket;
         for(String c : clientSet){
@@ -500,36 +522,37 @@ public class Broker {
         object.put("sender", id);
         object.put("action", MessageAction.BROKER_REG);
         object.put("content", "");
-        boolean success = false;
+        //boolean success = false;
         try {
             Socket socket = new Socket(ip, port);
             PrintStream printStream = new PrintStream(socket.getOutputStream());
             printStream.println(object.toJSONString());
             printStream.flush();
             printStream.close();
-
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while((line = bufferedReader.readLine()) != null){
-                sb.append(line);
-            }
-            JSONObject message = (JSONObject)parser.parse(sb.toString());
-            String action = (String)message.get("action");
-            if(action.equals(MessageAction.OK)){
-                success = true;
-            }
+//            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+//            StringBuilder sb = new StringBuilder();
+//            String line;
+//            while((line = bufferedReader.readLine()) != null){
+//                sb.append(line);
+//            }
+//            JSONObject message = (JSONObject)parser.parse(sb.toString());
+//            String action = (String)message.get("action");
+//            if(action.equals(MessageAction.OK)){
+//                success = true;
+//            }
             socket.close();
         }catch (UnknownHostException e){
             System.out.println("Unknown host!");
         }catch (ConnectException e){
             System.out.println("Connection Error! Please check wether zookeeper is alive!");
         }catch (IOException e){
+            e.printStackTrace();
             System.out.println("IO Error!");
-        }catch (ParseException e){
-            System.out.println("Message received is not Json Object!");
         }
-        return success;
+//        catch (ParseException e){
+//            System.out.println("Message received is not Json Object!");
+//        }
+        return true;
     }
 
     /**
@@ -544,15 +567,18 @@ public class Broker {
 
         @Override
         public void run(){
+            System.out.println("handler running");
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String inputLine;
-                while((inputLine = reader.readLine()) != null){
-                    sb.append(inputLine);
-                }
-                JSONObject object = (JSONObject) parser.parse(sb.toString());
+                //StringBuilder sb = new StringBuilder();
+                String inputLine = reader.readLine();
+//                while((inputLine = reader.readLine()) != null){
+//                    sb.append(inputLine);
+//                }
+                socket.close();
+                JSONObject object = (JSONObject) parser.parse(inputLine);
                 String action = (String)object.get("action");
+                System.out.println("Action: " + action);
                 switch (action){
                     case MessageAction.ADD_CLIENT:
                         addClient(object);
@@ -602,6 +628,7 @@ public class Broker {
             System.out.println("Listening on port: " + port);
             while (true){
                 Socket socket = serverSocket.accept();
+                System.out.println("accept");
                 Handler handler = new Handler(socket);
                 handler.run();
             }
@@ -617,10 +644,13 @@ public class Broker {
         Scanner scanner = new Scanner(System.in);
         boolean success = false;
         while(!success){
-            System.out.println("Please input zookeeper IP address:");
-            String zookeeperIp = scanner.next();
-            System.out.println("Please input zookeeper port number: ");
-            int zookeeperPort = scanner.nextInt();
+            System.out.print("Please input port number: ");
+            port = scanner.nextInt();
+            broker.setIPAndPort("127.0.0.1", port);
+            //System.out.println("Please input zookeeper IP address:");
+            String zookeeperIp = "127.0.0.1";
+            //System.out.println("Please input zookeeper port number: ");
+            int zookeeperPort = 8889;
             if(!broker.register(zookeeperIp, zookeeperPort)){
                 System.out.println("Register failed!");
             }else{
@@ -628,9 +658,6 @@ public class Broker {
                 success = true;
             }
         }
-        System.out.print("Please input port number: ");
-        port = scanner.nextInt();
-        broker.setIPAndPort("127.0.0.1", port);
         broker.init();
         broker.run();
     }

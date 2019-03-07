@@ -3,6 +3,7 @@ package subscriber;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
+import org.omg.PortableInterceptor.SYSTEM_EXCEPTION;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -60,8 +61,8 @@ public class Subscriber {
             Socket socket = new Socket(zookeeperAddr, zookeeperPort);
             //send request
             PrintStream out = new PrintStream(socket.getOutputStream());
-            out.println(obj);
-            socket.close();
+            out.println(obj.toJSONString());
+            //socket.close();
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -73,12 +74,12 @@ public class Subscriber {
      */
     //从zookeeper知道有哪些topic可以用
     //又一个
-    private void getTopic() {
+    protected void getTopic() {
         try {
             Socket socket = new Socket(zookeeperAddr, zookeeperPort);
             //send request
             JSONObject request = new JSONObject();
-            request.put("sender", subscriberAddr + subscriberPort);
+            request.put("sender", subscriberAddr + ":" + subscriberPort);
             request.put("action", "GET_TOPIC");
             request.put("content", new JSONObject());
             PrintStream out = new PrintStream(socket.getOutputStream());
@@ -130,15 +131,20 @@ public class Subscriber {
                 JSONParser parser = new JSONParser();
                 JSONObject jsonObject = (JSONObject) parser.parse(in);
                 String action = (String)jsonObject.get("action");
+                System.out.println("Action: " + action);
                 if (action.equals("SEND_MESSAGE")) {
                     JSONObject content = (JSONObject) jsonObject.get("content");
                     String sender = (String) jsonObject.get("sender");
                     String[] serverID = sender.split(":");
                     String topic = (String) content.get("topic");
-                    String message = (String) content.get("message");
-                    int id = (int)jsonObject.get("id");
+                    String message = (String) content.get("msg");
+                    long id = (Long)content.get("id");
+                    if(topicMap.get(topic) == -1){
+                        topicMap.put(topic, (int)id);
+                    }else{
+                        topicMap.put(topic, topicMap.getOrDefault(topic, 0) + 1);
+                    }
 
-                    topicMap.put(topic, topicMap.getOrDefault(topic, 0) + 1);
                     if (topicMap.get(topic) < id) {
                         //notify server message missing
                         JSONObject request = new JSONObject();
@@ -155,7 +161,7 @@ public class Subscriber {
                         }
 
                     } else {
-                        System.out.println(message);
+                        System.out.println(id + ": " + message);
                     }
                 }
 
