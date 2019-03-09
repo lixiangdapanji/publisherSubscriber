@@ -28,5 +28,6 @@ public class MessageAction {
     public static final String ADD_EDGE = "ADD_EDGE";
     public static final String BROKER_REG = "BROKER_REG";
     public static final String SYNCHRONIZE = "SYNCHRONIZE";
+    public static final String SERVER_FAIL = "SERVER_FAIL";
 
 }
