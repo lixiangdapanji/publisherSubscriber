@@ -1,6 +1,8 @@
 package broker;
 
+import message.Message;
 import message.MessageAction;
+import netscape.javascript.JSObject;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
@@ -21,7 +23,7 @@ public class Broker {
     private int port ;
     private JSONParser parser;
     private String id;
-    private AllOne allOne;
+    //private AllOne allOne;
     private String zookeeperIp;
     private int zookeeperPort;
 
@@ -32,6 +34,9 @@ public class Broker {
 
     //
     private Map<String, Set<String>> routingMap;
+
+    private Map<String, Integer> serverLoad;
+
 
     //给message编号
     private AtomicInteger msgCount;
@@ -50,7 +55,8 @@ public class Broker {
         routingMap = new HashMap<>();
         msgCount = new AtomicInteger(0);
         parser = new JSONParser();
-        allOne = new AllOne();
+        //allOne = new AllOne();
+        serverLoad = new HashMap<>();
     }
 
     public void setIPAndPort(String ip, int port){
@@ -111,7 +117,7 @@ public class Broker {
                 serverClientMap.put(key, new HashSet<>());
             }
             serverClientMap.get(key).add(clientId);
-            allOne.inc(serverId);
+            serverLoad.put(serverId, serverLoad.getOrDefault(serverId, 0) + 1);
         }catch (Exception e){
             e.printStackTrace();
         }
@@ -128,7 +134,7 @@ public class Broker {
     private int delClient(JSONObject message) {
         System.out.println("delClient is called.");
         try{
-            int count = 0;
+            //int count = 0;
             JSONObject content = (JSONObject) message.get("content");
             String topic = (String)content.get("topic");
             String clientId = (String)content.get("client");
@@ -137,14 +143,14 @@ public class Broker {
                 String key = serverId + ":" + topic;
                 if(serverClientMap.containsKey("key") && serverClientMap.get(key).contains(clientId)){
                     serverClientMap.get(key).remove(clientId);
-                    count++;
+                    serverLoad.put(serverId, serverLoad.get(serverId) - 1);
+                    return 1;
                 }
             }
-            return count;
         }catch (Exception e){
             e.printStackTrace();
-            return -1;
         }
+        return -1;
     }
 
     /**
@@ -160,7 +166,21 @@ public class Broker {
             JSONObject content = (JSONObject) message.get("content");
             String topic = (String)content.get("topic");
             String clientId = (String)content.get("client");
-            String minLoad = allOne.getMinKey();
+            String minLoad = "";
+            int min = Integer.MAX_VALUE;
+            for(String serverId : topicServerMap.get(topic)){
+                if(!serverLoad.containsKey(serverId)){
+                    minLoad = serverId;
+                    break;
+                }else{
+                    if(serverLoad.get(serverId) < min){
+                        min = serverLoad.get(serverId);
+                        minLoad = serverId;
+                    }
+                }
+            }
+
+
             JSONObject addClient = new JSONObject();
             addClient.put("sender", id);
             addClient.put("action", "ADD_CLIENT");
@@ -185,7 +205,7 @@ public class Broker {
      *               content:{topic: topic,
      *                        brokers: "server1, server2"}
      */
-    private void buildSpanningTree(JSONObject message) {
+    private List<String[]> buildSpanningTree(JSONObject message) {
         System.out.println("buildSpanningTree is called.");
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
@@ -194,9 +214,7 @@ public class Broker {
         String brokers = (String)content.get("brokers");
         String[] brokerlist = brokers.split(",");
 
-        for(String broker : brokerlist){
-            allOne.inc(broker);
-        }
+
 
         List<Integer> red = new ArrayList<>();
         List<Integer> blue = new ArrayList<>();
@@ -237,6 +255,12 @@ public class Broker {
             System.out.println();
         }
 
+        return pairs;
+
+
+    }
+
+    private void notifyAddEdge(String topic, List<String[]> pairs){
         for(String[] pair : pairs){
             String server1 = pair[0];
             String server2 = pair[1];
@@ -255,7 +279,6 @@ public class Broker {
                 sendEdge(topic, server2, server1);
             }
         }
-
     }
 
     /**
@@ -406,7 +429,7 @@ public class Broker {
         }
 
         topicServerMap.get(topic).add(serverID);
-        allOne.inc(serverID);
+        //allOne.inc(serverID);
 
         sendEdge(topic, needToAdd, serverID);
         sendEdge(topic, serverID, needToAdd);
@@ -441,12 +464,13 @@ public class Broker {
     private void sendSynchronizeData(String serverID){
         JSONObject serverClientObject = JsonUtil.mapToJson(serverClientMap);
         JSONObject topicServerObject = JsonUtil.mapToJson(topicServerMap);
-
+        JSONObject serverLoadObject = JsonUtil.loadToJson(serverLoad);
         JSONObject message = new JSONObject();
         message.put("sender", id);
         message.put("action", MessageAction.SYNCHRONIZE);
         message.put("server_client_map", serverClientObject);
         message.put("topic_server", topicServerObject);
+        message.put("server_load", serverLoadObject);
         try {
             String[] server = serverID.split(":");
             String ip = server[0];
@@ -471,8 +495,10 @@ public class Broker {
     private void synchronizedData(JSONObject message){
         JSONObject serverClientObject = (JSONObject)message.get("server_client_map");
         JSONObject topicServerObject = (JSONObject)message.get("topic_server");
+        JSONObject serverLoadObject = (JSONObject)message.get("server_load");
         serverClientMap = JsonUtil.jsonToMap(serverClientObject);
         topicServerMap = JsonUtil.jsonToMap(topicServerObject);
+        serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
     }
 
     /**
@@ -543,7 +569,7 @@ public class Broker {
     private void deleteServer(JSONObject message){
         JSONObject content = (JSONObject) message.get("content");
         String topic = (String)content.get("topic");
-        String serverId = (String)content.get("server");
+        String serverId = (String)content.get("broker");
         if(topicServerMap.containsKey(topic)){
             topicServerMap.get(topic).remove(serverId);
         }
@@ -635,6 +661,86 @@ public class Broker {
         return true;
     }
 
+
+    private void brokerFailed(JSONObject message){
+        JSONObject content = (JSONObject)message.get("content");
+        String topic = (String)content.get("topic");
+        String broker = (String)content.get("broker");
+
+        JSONObject delServerObject = new JSONObject();
+        delServerObject.put("sender", id);
+        delServerObject.put("action", MessageAction.DEL_SERVER);
+        delServerObject.put("content", content);
+        deleteServer(delServerObject);
+
+        JSONObject buildObject = new JSONObject();
+        buildObject.put("sender", id);
+        buildObject.put("action", MessageAction.BUILD_SPANNING_TREE);
+        JSONObject buildContent = new JSONObject();
+        Set<String> servers = topicServerMap.get(topic);
+        buildContent.put("topic", topic);
+        StringBuilder sb = new StringBuilder();
+        for(String server : servers){
+            sb.append(server + ",");
+        }
+        sb.deleteCharAt(sb.length() - 1);
+        buildContent.put("brokers", sb.toString());
+        buildObject.put("content", buildContent);
+        List<String[]> pairs = buildSpanningTree(buildObject);
+        Map<String, Set<String>> graph = new HashMap<>();
+        for(String[] pair : pairs){
+            graph.putIfAbsent(pair[0], new HashSet<>());
+            graph.get(pair[0]).add(pair[1]);
+        }
+        refreshEdges(topic, graph);
+    }
+
+    private void refreshEdges(String topic, Map<String, Set<String>> graph){
+        for(Map.Entry<String, Set<String>> entry : graph.entrySet()){
+            String key = entry.getKey();
+            Set<String> servers = entry.getValue();
+            StringBuilder sb = new StringBuilder();
+            for(String server : servers){
+                sb.append(server + ",");
+            }
+            sb.deleteCharAt(sb.length() - 1);
+
+            JSONObject object = new JSONObject();
+            object.put("sender", id);
+            object.put("action", MessageAction.REBUILD_EDGES);
+            JSONObject content = new JSONObject();
+            content.put("topic", topic);
+            content.put("brokers", sb.toString());
+            if(key.equals(id)){
+                rebuildEdges(object);
+                continue;
+            }
+
+            String ip = key.split(":")[0];
+            int port = Integer.valueOf(key.split(":")[1]);
+            try {
+                Socket socket = new Socket(ip, port);
+                PrintStream printStream = new PrintStream(socket.getOutputStream());
+                printStream.println(object.toJSONString());
+                printStream.close();
+                socket.close();
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void rebuildEdges(JSONObject message){
+        JSONObject content = (JSONObject)message.get("content");
+        String topic = (String)content.get("topic");
+        String[] brokers = ((String)content.get("brokers")).split(",");
+        routingMap.remove(topic);
+        routingMap.put(topic, new HashSet<>());
+        for(String broker : brokers){
+            routingMap.get(topic).add(broker);
+        }
+    }
+
     /**
      * inner thread class. Responsible to handle all kinds of actions.
      */
@@ -676,7 +782,9 @@ public class Broker {
                         allocateClient(object);
                         break;
                     case MessageAction.BUILD_SPANNING_TREE:
-                        buildSpanningTree(object);
+                        List<String[]> pairs = buildSpanningTree(object);
+                        String topic = (String)object.get("topic");
+                        notifyAddEdge(topic, pairs);
                         break;
                     case MessageAction.SEND_MESSAGE:
                         sendMsg(object);
@@ -694,7 +802,10 @@ public class Broker {
                         newFeed(object);
                         break;
                     case MessageAction.SERVER_FAIL:
-
+                        brokerFailed(object);
+                        break;
+                    case MessageAction.REBUILD_EDGES:
+                        rebuildEdges(object);
                         break;
                 }
 
