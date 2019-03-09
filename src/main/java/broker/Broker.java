@@ -77,8 +77,9 @@ public class Broker {
         String topic = (String)content.get("topic");
         String messagecontent = (String) message.get("msg");
 
-        int num = msgCount.getAndIncrement();
-        content.put("id", num);
+        int num = msgCount.incrementAndGet();
+        System.out.println("increment id" + num);
+        content.put("id", num + "");
         //content.put("message", messagecontent);
         JSONObject object = new JSONObject();
         object.put("sender", id);
@@ -160,7 +161,6 @@ public class Broker {
             String topic = (String)content.get("topic");
             String clientId = (String)content.get("client");
             String minLoad = allOne.getMinKey();
-
             JSONObject addClient = new JSONObject();
             addClient.put("sender", id);
             addClient.put("action", "ADD_CLIENT");
@@ -189,6 +189,8 @@ public class Broker {
         System.out.println("buildSpanningTree is called.");
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
+        topicServerMap.putIfAbsent(topic, new HashSet<>());
+        topicServerMap.get(topic).add(id);
         String brokers = (String)content.get("brokers");
         String[] brokerlist = brokers.split(",");
 
@@ -264,6 +266,7 @@ public class Broker {
      */
     private void sendEdge(String topic, String server1, String server2){
         System.out.println("sendEdge is called.");
+
         JSONObject message = new JSONObject();
         message.put("sender", id);
         message.put("action", MessageAction.ADD_EDGE);
@@ -271,7 +274,10 @@ public class Broker {
         content.put("topic", topic);
         content.put("server", server2);
         message.put("content", content);
-
+        if(server1.equals(id)){
+            addEdge(message);
+            return;
+        }
 
         String ip = server1.split(":")[0];
         int port = Integer.valueOf(server1.split(":")[1]);
@@ -371,6 +377,7 @@ public class Broker {
         if(!routingMap.containsKey(topic)){
             routingMap.put(topic, new HashSet<>());
         }
+        //allOne.inc(serverId);
         routingMap.get(topic).add(serverId);
     }
 
@@ -397,6 +404,9 @@ public class Broker {
             }
             idx--;
         }
+
+        topicServerMap.get(topic).add(serverID);
+        allOne.inc(serverID);
 
         sendEdge(topic, needToAdd, serverID);
         sendEdge(topic, serverID, needToAdd);
@@ -490,32 +500,31 @@ public class Broker {
      */
     private void sendMsg(JSONObject message) {
         JSONObject content = (JSONObject) message.get("content");
-        int num = (int)content.get("id");
+        int num = Integer.valueOf((String)content.get("id"));
+        System.out.println("message id:"  + num);
         msgCount.set(num);
         String topic = (String)content.get("topic");
         String serverId = ip + ":" + port;
         String key = serverId + ":" + topic;
         Set<String> clientSet = serverClientMap.get(key);
-        if(clientSet == null || clientSet.size() == 0){
-            System.out.println("Currently no clients!");
-            return;
-        }
+        if(!(clientSet == null || clientSet.size() == 0)){
 
-        Socket socket;
-        for(String c : clientSet){
-            String ip = c.split(":")[0];
-            int port = Integer.valueOf(c.split(":")[1]);
-            try {
-                socket = new Socket(ip, port);
-                socket.setSoTimeout(1000);
+            Socket socket;
+            for(String c : clientSet) {
+                String ip = c.split(":")[0];
+                int port = Integer.valueOf(c.split(":")[1]);
+                try {
+                    socket = new Socket(ip, port);
+                    socket.setSoTimeout(1000);
 
-                PrintStream printStream = new PrintStream(socket.getOutputStream());
-                printStream.println(message.toJSONString());
-                printStream.flush();
-                printStream.close();
-                socket.close();
-            }catch (Exception e){
-                e.printStackTrace();
+                    PrintStream printStream = new PrintStream(socket.getOutputStream());
+                    printStream.println(message.toJSONString());
+                    printStream.flush();
+                    printStream.close();
+                    socket.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }
         routingServer(topic, message);
@@ -584,15 +593,15 @@ public class Broker {
      * @param port
      * @return
      */
-    public  boolean register(String ip, int port, List<String> topics) {
-        StringBuilder sb = new StringBuilder();
-        for(String topic : topics){
-            sb.append(topic + ",");
-        }
+    public  boolean register(String ip, int port, String topics) {
+//        StringBuilder sb = new StringBuilder();
+//        for(String topic : topics){
+//            sb.append(topic + ",");
+//        }
         JSONObject object = new JSONObject();
         object.put("sender", id);
         object.put("action", MessageAction.BROKER_REG);
-        object.put("content", sb.length() == 0 ? sb.toString() : "");
+        object.put("content", topics);
         //boolean success = false;
         try {
             Socket socket = new Socket(ip, port);
@@ -685,6 +694,7 @@ public class Broker {
                         newFeed(object);
                         break;
                     case MessageAction.SERVER_FAIL:
+
                         break;
                 }
 
@@ -697,8 +707,21 @@ public class Broker {
 
     public void run(){
         try {
+            //System.out.println("Please input zookeeper IP address:");
+            String zookeeperIp = "127.0.0.1";
+            //System.out.println("Please input zookeeper port number: ");
+            int zookeeperPort = 8889;
             ServerSocket serverSocket = new ServerSocket(port);
             System.out.println("Listening on port: " + port);
+            Scanner scanner = new Scanner(System.in);
+            System.out.println("Please input topics that brokers need to register: ");
+            String topics = scanner.nextLine();
+            setZookeeper(zookeeperIp, zookeeperPort);
+            if(!register(zookeeperIp, zookeeperPort, topics)){
+                System.out.println("Register failed!");
+            }else{
+                System.out.println("Register succeed!");
+            }
             while (true){
                 Socket socket = serverSocket.accept();
                 System.out.println("accept");
@@ -716,28 +739,12 @@ public class Broker {
         Broker broker = new Broker();
         Scanner scanner = new Scanner(System.in);
         boolean success = false;
-        while(!success){
-            System.out.print("Please input port number: ");
-            port = scanner.nextInt();
-            broker.setIPAndPort("127.0.0.1", port);
-            //System.out.println("Please input zookeeper IP address:");
-            String zookeeperIp = "127.0.0.1";
-            //System.out.println("Please input zookeeper port number: ");
-            int zookeeperPort = 8889;
-            System.out.println("Please input topics that brokers need to register: ");
-            List<String> topics = new ArrayList<>();
-            while(scanner.hasNext()){
-                topics.add(scanner.next());
-            }
 
-            broker.setZookeeper(zookeeperIp, zookeeperPort);
-            if(!broker.register(zookeeperIp, zookeeperPort, topics)){
-                System.out.println("Register failed!");
-            }else{
-                System.out.println("Register succeed!");
-                success = true;
-            }
-        }
+        System.out.print("Please input port number: ");
+        port = Integer.valueOf(scanner.nextLine());
+        broker.setIPAndPort("127.0.0.1", port);
+
+
         broker.init();
         broker.run();
     }
