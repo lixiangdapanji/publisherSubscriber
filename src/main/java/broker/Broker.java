@@ -8,10 +8,7 @@ import util.JsonUtil;
 
 
 import java.io.*;
-import java.net.ConnectException;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,6 +19,8 @@ public class Broker {
     private JSONParser parser;
     private String id;
     private AllOne allOne;
+    private String zookeeperIp;
+    private int zookeeperPort;
 
     //server -> client list map; Key: server ip addr:port:topic; value: client list(client: ip:port)
     private Map<String, Set<String>> serverClientMap;
@@ -57,6 +56,10 @@ public class Broker {
         id = ip + ":" + port;
     }
 
+    public void setZookeeper(String ip, int port){
+        this.zookeeperIp = ip;
+        this.zookeeperPort = port;
+    }
 
     /**
      * leader receive new feed. Add count to this message and routing server to send message to all clients.
@@ -299,6 +302,7 @@ public class Broker {
         Set<String> serverSet = routingMap.get(topic);
         Socket socket;
         String sender = (String)message.get("sender");
+        List<String> failed = new ArrayList<>();
         for(String serverID : serverSet){
             if(serverID.equals(sender)){
                 continue;
@@ -315,10 +319,39 @@ public class Broker {
                 printStream.flush();
                 printStream.close();
                 socket.close();
-            }catch (Exception e){
-                e.printStackTrace();
+            }catch (IOException e){
+                failed.add(serverID);
             }
 
+        }
+        if(failed.size() > 0){
+            sendBrokerDown(failed);
+        }
+
+    }
+
+    /**
+     *
+     * @param faileds
+     */
+    private void sendBrokerDown(List<String> faileds){
+        JSONObject object = new JSONObject();
+        object.put("sender", id);
+        object.put("action", MessageAction.SERVER_FAIL);
+        StringBuilder sb = new StringBuilder();
+        for(String failed : faileds){
+            sb.append(failed + ",");
+        }
+        object.put("content", sb.toString());
+        try {
+            Socket socket = new Socket(zookeeperIp, zookeeperPort);
+            socket.setSoTimeout(1000);
+            PrintStream printStream = new PrintStream(socket.getOutputStream());
+            printStream.println(object.toJSONString());
+            printStream.close();
+            socket.close();
+        }catch (Exception e){
+            e.printStackTrace();
         }
     }
 
@@ -454,6 +487,8 @@ public class Broker {
      */
     private void sendMsg(JSONObject message) {
         JSONObject content = (JSONObject) message.get("content");
+        int num = (int)content.get("id");
+        msgCount.set(num);
         String topic = (String)content.get("topic");
         String serverId = ip + ":" + port;
         String key = serverId + ":" + topic;
@@ -507,6 +542,38 @@ public class Broker {
 
     }
 
+    private List<String> getTopic(String ip, int port) {
+        List<String> list = new ArrayList<>();
+        try {
+            Socket socket = new Socket(ip, port);
+            //send request
+            JSONObject request = new JSONObject();
+            request.put("sender", id);
+            request.put("action", "GET_TOPIC");
+            request.put("content", new JSONObject());
+            PrintStream out = new PrintStream(socket.getOutputStream());
+            out.println(request);
+
+            //get response
+            //InputStreamReader ins = new InputStreamReader(socket.getInputStream());
+            BufferedReader ins = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String in = ins.readLine();
+            JSONParser parser = new JSONParser();
+            JSONObject response = (JSONObject) parser.parse(in);
+            String content = (String) response.get("content");
+            String[] topics = content.split(",");
+            for (String s : topics) {
+                list.add(s);
+            }
+            socket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
 
     /**
      * register broker on zookeeper
@@ -514,11 +581,15 @@ public class Broker {
      * @param port
      * @return
      */
-    public  boolean register(String ip, int port) {
+    public  boolean register(String ip, int port, List<String> topics) {
+        StringBuilder sb = new StringBuilder();
+        for(String topic : topics){
+            sb.append(topic + ",");
+        }
         JSONObject object = new JSONObject();
         object.put("sender", id);
         object.put("action", MessageAction.BROKER_REG);
-        object.put("content", "");
+        object.put("content", sb.length() == 0 ? sb.toString() : "");
         //boolean success = false;
         try {
             Socket socket = new Socket(ip, port);
@@ -610,6 +681,8 @@ public class Broker {
                     case MessageAction.NEW_FEED:
                         newFeed(object);
                         break;
+                    case MessageAction.SERVER_FAIL:
+                        break;
                 }
 
             }catch (Exception e){
@@ -648,7 +721,14 @@ public class Broker {
             String zookeeperIp = "127.0.0.1";
             //System.out.println("Please input zookeeper port number: ");
             int zookeeperPort = 8889;
-            if(!broker.register(zookeeperIp, zookeeperPort)){
+            System.out.println("Please input topics that brokers need to register: ");
+            List<String> topics = new ArrayList<>();
+            while(scanner.hasNext()){
+                topics.add(scanner.next());
+            }
+
+            broker.setZookeeper(zookeeperIp, zookeeperPort);
+            if(!broker.register(zookeeperIp, zookeeperPort, topics)){
                 System.out.println("Register failed!");
             }else{
                 System.out.println("Register succeed!");
