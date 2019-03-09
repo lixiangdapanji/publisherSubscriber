@@ -131,7 +131,7 @@ public class Publisher extends Thread{
     public void run() {
         while (true) {
             try {
-                sleep(10000);
+                sleep(5000);
             }catch (Exception e){
                 e.printStackTrace();
             }

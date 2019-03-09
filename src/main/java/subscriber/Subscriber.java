@@ -137,7 +137,7 @@ public class Subscriber {
                     String[] serverID = sender.split(":");
                     String topic = (String) content.get("topic");
                     String message = (String) content.get("msg");
-                    long id = (Long)content.get("id");
+                    int id = Integer.valueOf((String)content.get("id"));
                     if(topicMap.get(topic) == -1){
                         topicMap.put(topic, (int)id);
                     }else{

@@ -556,7 +556,7 @@ public class Zookeeper {
                 conn.close();
             } catch (Exception e) {
                 System.out.println("Exception handling request.");
-                System.out.println(e.getMessage());
+                e.printStackTrace();
             } finally {
                 if (conn != null) {
                     try {
