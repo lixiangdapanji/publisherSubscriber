@@ -35,6 +35,7 @@ public class BrokerLoad {
     }
 
     public void removeKey(String key) {
+        if(key == null) return;
         int value = keysMap.get(key);
         Bucket pos = bucketsMap.get(value);
         pos.set.remove(key);

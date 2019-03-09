@@ -108,6 +108,11 @@ public class Publisher extends Thread{
             } catch (Exception e) {
                 System.out.println("Exception in sendMsg.");
                 System.out.println(e.getMessage());
+                try{
+                    Thread.sleep(5000);
+                }catch(Exception se){
+                    System.out.println(se.getMessage());
+                }
                 brokerAddr = getServerAddr(topic);
                 topicBrokerMap.replace(topic, brokerAddr);
             } finally {

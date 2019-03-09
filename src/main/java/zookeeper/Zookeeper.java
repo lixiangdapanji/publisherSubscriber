@@ -71,7 +71,7 @@ public class Zookeeper {
                     for (String broker : brokers) {
                         if (!checkAlive(broker)) {
                             delServer(broker);
-                            reallocate = true;
+                            //reallocate = true;
                         }
                     }
 
@@ -111,11 +111,11 @@ public class Zookeeper {
                     //get an array of brokers with load ascending
                     List<String> brokerGroup = loads.chooseKey(defaultGroupSize);
                     int idx = 0;
-                    int num = defaultGroupSize-size;
-                    while(num>0){
+                    int num = defaultGroupSize - size;
+                    while (num > 0) {
                         String broker = brokerGroup.get(idx);
                         //if broker not in topic server set, add it
-                        if(!TopicToSever.get(topic).contains(broker)) {
+                        if (!TopicToSever.get(topic).contains(broker)) {
                             if (content.containsKey("broker")) content.replace("broker", broker);
                             else content.put("broker", broker);
 
@@ -197,7 +197,7 @@ public class Zookeeper {
         //determine group size
         int size = serverSet.size();
         System.out.println("Forming group from " + size + " brokers");
-        if(size == 0){
+        if (size == 0) {
             return;
         }
         if (size > defaultGroupSize) {
@@ -222,7 +222,7 @@ public class Zookeeper {
                 serverTopicSet.get(broker).add(topic);
             }
 
-            if(it.hasNext()) broker = it.next();
+            if (it.hasNext()) broker = it.next();
             else break;
         }
 
@@ -261,7 +261,8 @@ public class Zookeeper {
             for (String broker : brokers) {
                 brokerList.append(broker + ",");
             }
-            brokerList.deleteCharAt(brokerList.length() - 1);
+            if (brokerList.length() > 0)
+                brokerList.deleteCharAt(brokerList.length() - 1);
 
             content.put("brokers", brokerList.toString());
             msg.put("content", content);
@@ -319,16 +320,23 @@ public class Zookeeper {
 
     private void addServer(String topic, String brokerAddr) {
         System.out.println("Adding server: " + brokerAddr);
-        serverSet.add(brokerAddr);
-        loads.inc(brokerAddr);
-        if (topic.equals("")) {
-            //allocateServer(brokerAddr);
+        if (!serverSet.contains(brokerAddr)) {
             serverSet.add(brokerAddr);
             loads.inc(brokerAddr);
+        }
+        if (topic.equals("")) {
+            //allocateServer(brokerAddr);
+            return;
         } else {
             loads.inc(brokerAddr);
 
+            boolean newTopic = false;
+            if (!TopicToSever.containsKey(topic)) {
+                TopicToSever.put(topic, new HashSet<>());
+                newTopic = true;
+            }
             TopicToSever.get(topic).add(brokerAddr);
+
             if (serverTopicSet.containsKey(brokerAddr))
                 serverTopicSet.get(brokerAddr).add(topic);
             else {
@@ -336,9 +344,10 @@ public class Zookeeper {
                 serverTopicSet.get(brokerAddr).add(topic);
             }
 
-            if (leaderMap.get(topic) == null) {
-                leaderMap.replace(topic, brokerAddr);
+            if (newTopic || leaderMap.get(topic) == null) {
+                leaderMap.put(topic, brokerAddr);
                 noticeTopicLeader(topic);
+                loads.inc(brokerAddr);
             } else {
                 String leaderAddr = leaderMap.get(topic);
                 JSONObject msg = new JSONObject();
@@ -364,6 +373,7 @@ public class Zookeeper {
     }
 
     private void delServer(String brokerAddr) {
+        if (brokerAddr == null) return;
         //find all topics managed by broker
         Set<String> topics = serverTopicSet.get(brokerAddr);
         loads.removeKey(brokerAddr);
@@ -510,20 +520,34 @@ public class Zookeeper {
                         sent.put("content", "fail");
                     }
                     writer.println(sent.toString());
-                } else if(action.equals("BROKER_REG")){
-                    String brokerAddr = (String)json.get("sender");
-                    String topic = (String)json.get("content");
-                    addServer(topic,brokerAddr);
-                } else if(action.equals("GET_TOPIC")){
+                } else if (action.equals("BROKER_REG")) {
+                    String brokerAddr = (String) json.get("sender");
+                    String content = (String) json.get("content");
+                    if (content.equals(""))
+                        addServer("", brokerAddr);
+                    else {
+                        String[] topics = content.split(",");
+                        for (String topic : topics)
+                            addServer(topic, brokerAddr);
+                    }
+                } else if (action.equals("GET_TOPIC")) {
                     Set<String> topicSet = getTopicSet();
                     StringBuilder topics = new StringBuilder();
                     for (String topic : topicSet) {
                         topics.append(topic + ",");
                     }
-                    topics.deleteCharAt(topics.length() - 1);
-                    sent.put("action","TOPICS");
-                    sent.put("content",topics.toString());
+                    if (topics.length() > 0)
+                        topics.deleteCharAt(topics.length() - 1);
+                    sent.put("action", "TOPICS");
+                    sent.put("content", topics.toString());
                     writer.println(sent.toString());
+                } else if (action.equals("SERVER_FAIL")) {
+                    String content = (String) json.get("content");
+                    String[] brokers = content.split(",");
+                    for (String broker : brokers)
+                        delServer(broker);
+                } else{
+                    System.out.println("action not supported");
                 }
 
 
