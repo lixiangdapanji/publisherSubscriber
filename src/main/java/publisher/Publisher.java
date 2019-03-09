@@ -2,15 +2,12 @@ package publisher;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
 
 import java.io.*;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
-public class Publisher extends Thread{
+public class Publisher extends Thread {
     private final String zookeeper_ip = "127.0.0.1";
     private int zookeeper_port = 8889;
     private Map<String, String> topicBrokerMap = new HashMap<>();
@@ -74,7 +71,7 @@ public class Publisher extends Thread{
             client.close();
         } catch (Exception e) {
             System.out.println("Exception in getServerAddr.");
-            System.out.println(e.getMessage());
+            e.getStackTrace();
         } finally {
             if (client != null) {
                 try {
@@ -107,10 +104,10 @@ public class Publisher extends Thread{
                 break;
             } catch (Exception e) {
                 System.out.println("Exception in sendMsg.");
-                System.out.println(e.getMessage());
-                try{
+                e.getStackTrace();
+                try {
                     Thread.sleep(5000);
-                }catch(Exception se){
+                } catch (Exception se) {
                     System.out.println(se.getMessage());
                 }
                 brokerAddr = getServerAddr(topic);
@@ -132,7 +129,7 @@ public class Publisher extends Thread{
         while (true) {
             try {
                 sleep(5000);
-            }catch (Exception e){
+            } catch (Exception e) {
                 e.printStackTrace();
             }
             //create message
@@ -148,7 +145,7 @@ public class Publisher extends Thread{
                 brokerAddr = topicBrokerMap.get(topic);
             else {
                 brokerAddr = getServerAddr(topic);
-                if(brokerAddr==null) continue;
+                if (brokerAddr == null) continue;
                 topicBrokerMap.put(topic, brokerAddr);
                 System.out.println(brokerAddr);
             }

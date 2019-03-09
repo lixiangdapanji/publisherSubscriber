@@ -1,4 +1,5 @@
 package zookeeper;
+
 import java.util.*;
 
 public class BrokerLoad {
@@ -35,7 +36,7 @@ public class BrokerLoad {
     }
 
     public void removeKey(String key) {
-        if(key == null) return;
+        if (key == null || !keysMap.containsKey(key)) return;
         int value = keysMap.get(key);
         Bucket pos = bucketsMap.get(value);
         pos.set.remove(key);
@@ -44,6 +45,23 @@ public class BrokerLoad {
         }
     }
 
+    //choose a key with minimum load
+    public String chooseMin(String[] keys) {
+        if (keys.length == 0)
+            return null;
+
+        String res = null;
+        int minValue = Integer.MAX_VALUE;
+        for (String key : keys) {
+            if (keysMap.containsKey(key) && keysMap.get(key) < minValue) {
+                res = key;
+                minValue = keysMap.get(key);
+            }
+        }
+        return res;
+    }
+
+    //choose k keys with minimum value
     public List<String> chooseKey(int k) {
         List<String> ans = new ArrayList<>();
 

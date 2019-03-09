@@ -33,12 +33,12 @@ public class Zookeeper {
             System.out.println("Server listening at port " + zookeeper_port);
         } catch (Exception e) {
             System.out.println("Exception starting zookeeper.");
-            System.out.println(e.getMessage());
+            e.getStackTrace();
             return;
         }
 
-        //Routine routine = new Routine(20000);
-        //routine.start();
+        Routine routine = new Routine(30000);
+        routine.start();
 
         ExecutorService threadPool = Executors.newCachedThreadPool();
 
@@ -51,7 +51,7 @@ public class Zookeeper {
 
             } catch (Exception e) {
                 System.out.println("Exception handling connection");
-                System.out.println(e.getMessage());
+                e.getStackTrace();
             }
         }
     }
@@ -83,7 +83,7 @@ public class Zookeeper {
                     Thread.sleep(t);
                 } catch (Exception e) {
                     System.out.println("routine sleep fail");
-                    System.out.println(e.getMessage());
+                    e.getStackTrace();
                 }
             }
         }
@@ -215,12 +215,9 @@ public class Zookeeper {
         while (true) {
             loads.inc(broker);
             TopicToSever.get(topic).add(broker);
-            if (serverTopicSet.containsKey(broker))
-                serverTopicSet.get(broker).add(topic);
-            else {
+            if (!serverTopicSet.containsKey(broker))
                 serverTopicSet.put(broker, new HashSet<>());
-                serverTopicSet.get(broker).add(topic);
-            }
+            serverTopicSet.get(broker).add(topic);
 
             if (it.hasNext()) broker = it.next();
             else break;
@@ -229,17 +226,17 @@ public class Zookeeper {
     }
 
     private void leaderElection(String topic) {
-        //random choose a leader in the broker group
+        //choose a leader in the broker group with minimum load
         Set<String> brokerSet = TopicToSever.get(topic);
         String leader = null;
         if (!brokerSet.isEmpty()) {
             String[] brokers = brokerSet.toArray(new String[brokerSet.size()]);
-            int i = (int) (Math.random() * brokerSet.size());
-            leader = brokers[i];
+            leader = loads.chooseMin(brokers);
         }
-        if (leaderMap.containsKey(topic)) leaderMap.replace(topic, leader);
-        else leaderMap.put(topic, leader);
-        loads.inc(leader);
+
+        leaderMap.put(topic, leader);
+        if (leader != null)
+            loads.inc(leader);
     }
 
     private void noticeTopicLeader(String topic) {
@@ -261,8 +258,6 @@ public class Zookeeper {
             for (String broker : brokers) {
                 brokerList.append(broker + ",");
             }
-            if (brokerList.length() > 0)
-                brokerList.deleteCharAt(brokerList.length() - 1);
 
             content.put("brokers", brokerList.toString());
             msg.put("content", content);
@@ -274,14 +269,14 @@ public class Zookeeper {
                 System.out.println(ip + ":" + port);
             } catch (Exception e) {
                 System.out.println("error in notice leader");
-                System.out.println(e.getMessage());
+                e.getStackTrace();
             }
         }
     }
 
     private String getLeaderInfo(String topic) {
         //return leader info for a specific topic
-
+        //if it's a new topic, form a brokers group first
         if (!getTopicSet().contains(topic)) {
             formGroup(topic);
             noticeTopicLeader(topic);
@@ -309,64 +304,64 @@ public class Zookeeper {
             client.close();
             return true;
         } catch (Exception e) {
-            System.out.println(e.getMessage());
-            return false;
+            System.out.println("broker fail");
+            e.getStackTrace();
         }
+        return false;
     }
 
     //private void pingServer() {
 
     //}
 
-    private void addServer(String topic, String brokerAddr) {
+    private void addServer(String topicSet, String brokerAddr) {
         System.out.println("Adding server: " + brokerAddr);
+        //if it's a new broker, add it to broker set
         if (!serverSet.contains(brokerAddr)) {
             serverSet.add(brokerAddr);
             loads.inc(brokerAddr);
         }
-        if (topic.equals("")) {
-            //allocateServer(brokerAddr);
-            return;
-        } else {
-            loads.inc(brokerAddr);
 
-            boolean newTopic = false;
-            if (!TopicToSever.containsKey(topic)) {
-                TopicToSever.put(topic, new HashSet<>());
-                newTopic = true;
-            }
-            TopicToSever.get(topic).add(brokerAddr);
-
-            if (serverTopicSet.containsKey(brokerAddr))
-                serverTopicSet.get(brokerAddr).add(topic);
-            else {
-                serverTopicSet.put(brokerAddr, new HashSet<>());
-                serverTopicSet.get(brokerAddr).add(topic);
-            }
-
-            if (newTopic || leaderMap.get(topic) == null) {
-                leaderMap.put(topic, brokerAddr);
-                noticeTopicLeader(topic);
+        String[] topics = topicSet.split(",");
+        for (String topic : topics) {
+            if (!topic.equals("")) {
                 loads.inc(brokerAddr);
-            } else {
-                String leaderAddr = leaderMap.get(topic);
-                JSONObject msg = new JSONObject();
-                msg.put("action", "ADD_NEW_BROKER");
-                JSONObject content = new JSONObject();
-                content.put("topic", topic);
-                content.put("broker", brokerAddr);
-                msg.put("content", content);
 
-                int i = leaderAddr.indexOf(":");
-                String ip = leaderAddr.substring(0, i);
-                int port = Integer.parseInt(leaderAddr.substring(i + 1));
-                try {
-                    Socket socket = new Socket(ip, port);
-                    PrintStream writer = new PrintStream(socket.getOutputStream());
-                    writer.println(msg.toString());
-                } catch (Exception e) {
-                    System.out.println("error in adding broker");
-                    System.out.println(e.getMessage());
+                boolean newTopic = false;
+                if (!TopicToSever.containsKey(topic)) {
+                    TopicToSever.put(topic, new HashSet<>());
+                    newTopic = true;
+                }
+                TopicToSever.get(topic).add(brokerAddr);
+
+                if (!serverTopicSet.containsKey(brokerAddr))
+                    serverTopicSet.put(brokerAddr, new HashSet<>());
+                serverTopicSet.get(brokerAddr).add(topic);
+
+                if (newTopic || leaderMap.get(topic) == null) {
+                    leaderMap.put(topic, brokerAddr);
+                    noticeTopicLeader(topic);
+                    loads.inc(brokerAddr);
+                } else {
+                    String leaderAddr = leaderMap.get(topic);
+                    JSONObject msg = new JSONObject();
+                    msg.put("action", "ADD_NEW_BROKER");
+                    JSONObject content = new JSONObject();
+                    content.put("topic", topic);
+                    content.put("broker", brokerAddr);
+                    msg.put("content", content);
+
+                    int i = leaderAddr.indexOf(":");
+                    String ip = leaderAddr.substring(0, i);
+                    int port = Integer.parseInt(leaderAddr.substring(i + 1));
+                    try {
+                        Socket socket = new Socket(ip, port);
+                        PrintStream writer = new PrintStream(socket.getOutputStream());
+                        writer.println(msg.toString());
+                    } catch (Exception e) {
+                        System.out.println("error in adding broker");
+                        e.getStackTrace();
+                    }
                 }
             }
         }
@@ -401,7 +396,7 @@ public class Zookeeper {
                     writer.println(msg.toString());
                 } catch (Exception e) {
                     System.out.println("error in reporting broker failure");
-                    System.out.println(e.getMessage());
+                    e.getStackTrace();
                 }
             }
         }
@@ -523,21 +518,13 @@ public class Zookeeper {
                 } else if (action.equals("BROKER_REG")) {
                     String brokerAddr = (String) json.get("sender");
                     String content = (String) json.get("content");
-                    if (content.equals(""))
-                        addServer("", brokerAddr);
-                    else {
-                        String[] topics = content.split(",");
-                        for (String topic : topics)
-                            addServer(topic, brokerAddr);
-                    }
+                    addServer(content, brokerAddr);
                 } else if (action.equals("GET_TOPIC")) {
                     Set<String> topicSet = getTopicSet();
                     StringBuilder topics = new StringBuilder();
                     for (String topic : topicSet) {
                         topics.append(topic + ",");
                     }
-                    if (topics.length() > 0)
-                        topics.deleteCharAt(topics.length() - 1);
                     sent.put("action", "TOPICS");
                     sent.put("content", topics.toString());
                     writer.println(sent.toString());
@@ -546,7 +533,7 @@ public class Zookeeper {
                     String[] brokers = content.split(",");
                     for (String broker : brokers)
                         delServer(broker);
-                } else{
+                } else {
                     System.out.println("action not supported");
                 }
 
@@ -571,8 +558,14 @@ public class Zookeeper {
     }
 
     public static void main(String[] args) {
-        Zookeeper zookeeper = new Zookeeper();
-        zookeeper.run();
+        String a = "";
+        String[] str = a.split(",");
+        System.out.println(str.length);
+        for (String s : str) {
+            if (s.equals(""))
+                System.out.println("empty String");
+        }
+        //Zookeeper zookeeper = new Zookeeper();
+        //zookeeper.run();
     }
 }
-
