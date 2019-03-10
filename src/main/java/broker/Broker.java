@@ -1,12 +1,10 @@
 package broker;
 
-import jdk.jfr.internal.BufferWriter;
 import message.Message;
 import message.MessageAction;
-import netscape.javascript.JSObject;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import util.AllOne;
+import org.json.simple.parser.ParseException;
 import util.JsonUtil;
 
 
@@ -513,7 +511,7 @@ public class Broker {
 
         countMsgMap.put(num, content.toString());
         if (countMsgMap.size() == 10) {
-            WriteTofileThread writeTofileThread = new WriteTofileThread(serverId);
+            WriteToFileThread writeTofileThread = new WriteToFileThread(serverId);
             writeTofileThread.run();
             countMsgMap.clear();
         }
@@ -615,7 +613,6 @@ public class Broker {
         return true;
     }
 
-
     private void brokerFailed(JSONObject message){
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
@@ -694,9 +691,9 @@ public class Broker {
             routingMap.get(topic).add(broker);
         }
     }
-    private class WriteTofileThread extends Thread{
+    private class WriteToFileThread extends Thread{
         String serverId;
-        public WriteTofileThread(String serverId) {
+        public WriteToFileThread(String serverId) {
             this.serverId = serverId;
         }
         @Override
@@ -707,7 +704,7 @@ public class Broker {
                 FileWriter fileWriter = new FileWriter(path, true);
                 BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
                 for (Map.Entry<Integer, String> entry :countMsgMap.entrySet()) {
-                    bufferedWriter.write(entry.getKey() + ":" + entry.getValue());
+                    bufferedWriter.write(entry.getKey() + ":" + entry.getValue() + "\n");
                 }
 
                 bufferedWriter.close();
@@ -720,12 +717,69 @@ public class Broker {
 
     }
 
+
+
+    private void missMsgHandler(JSONObject message) {
+        System.out.println("Detect message missing");
+        String clientInfo = (String)message.get("sender");
+
+        JSONObject content = (JSONObject) message.get("content");
+        String[] msgRange = content.toString().split(":");
+        int from = Integer.valueOf(msgRange[0]);
+        int to = Integer.valueOf(msgRange[1]);
+
+        String filePath =  "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + ip + ":"+ port + "Message";;
+        Scanner sc = new Scanner(filePath);
+        StringBuilder sb = new StringBuilder();
+        while (sc.hasNextLine()) {
+            String msg = sc.nextLine();
+            String[] msgKV = msg.split(":");
+            int n = Integer.valueOf(msgKV[0]);
+            while((n >= from) && (n <= to)) {
+                sb.append(msg);
+            }
+        }
+        System.out.println(sb.toString());
+
+        JSONObject object = new JSONObject();
+        object.put("sender", clientInfo);
+        object.put("action", MessageAction.SEND_MESSAGE);
+        object.put("content", sb.toString());
+
+        SendMissingMegThread sendMissingMegThread = new SendMissingMegThread(object, clientInfo);
+        sendMissingMegThread.run();
+    }
+
+    private class SendMissingMegThread extends Thread{
+        private String clientInfo;
+        private JSONObject message;
+
+        public SendMissingMegThread(JSONObject message, String clientInfo) {
+            this.message = message;
+            this.clientInfo = clientInfo;
+        }
+        @Override
+        public void run(){
+            try {
+                String[] infos = clientInfo.split(":");
+                String clientIP = infos[0];
+                int clientPort = Integer.valueOf(infos[1]);
+                Socket socket = new Socket(clientIP, clientPort);
+
+                PrintStream out = new PrintStream(socket.getOutputStream());
+                out.println(message.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+
     /**
      * inner thread class. Responsible to handle all kinds of actions.
      */
     private class Handler extends Thread{
         private Socket socket;
-
         Handler(Socket socket){
             this.socket = socket;
         }
@@ -786,6 +840,8 @@ public class Broker {
                     case MessageAction.REBUILD_EDGES:
                         rebuildEdges(object);
                         break;
+                    case MessageAction.MISSI_MESSAGE:
+                        missMsgHandler(object);
                 }
 
             }catch (Exception e){

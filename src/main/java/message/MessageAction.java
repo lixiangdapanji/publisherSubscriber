@@ -30,5 +30,6 @@ public class MessageAction {
     public static final String SYNCHRONIZE = "SYNCHRONIZE";
     public static final String SERVER_FAIL = "SERVER_FAIL";
     public static final String REBUILD_EDGES = "REBUILD_EDGES";
+    public static final String MISSI_MESSAGE = "MISSING_MESSAGE ";
 
 }

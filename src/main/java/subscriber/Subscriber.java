@@ -144,12 +144,14 @@ public class Subscriber {
                     }else{
                         topicMap.put(topic, topicMap.getOrDefault(topic, 0) + 1);
                     }
-
-                    if (topicMap.get(topic) < id) {
+                    int wrongId = topicMap.get(topic);
+                    if (wrongId < id) {
                         //notify server message missing
                         JSONObject request = new JSONObject();
                         request.put("sender", subscriberAddr + ":" + subscriberPort);
                         request.put("action", "MISSING_MESSAGE");
+                        request.put("content",  wrongId + ":" + (id - 1) );
+
                         try {
                             Socket socket = new Socket(serverID[0], Integer.valueOf(serverID[1]));
                             //send request
