@@ -15,7 +15,7 @@ public class Publisher extends Thread {
 
     public Publisher() {
         //initial topic list
-        topicList.add("Topic_1");
+        //topicList.add("Topic_1");
     }
 
     private JSONObject CreateMsg() {
@@ -126,6 +126,12 @@ public class Publisher extends Thread {
     }
 
     public void run() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("Please input topics: ");
+        String input = scanner.nextLine();
+        String[] topics = input.split(",");
+        topicList = Arrays.asList(topics);
+
         while (true) {
             try {
                 sleep(5000);

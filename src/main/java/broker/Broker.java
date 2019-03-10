@@ -2,7 +2,7 @@ package broker;
 
 import message.Message;
 import message.MessageAction;
-import netscape.javascript.JSObject;
+//import netscape.javascript.JSObject;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import util.AllOne;
