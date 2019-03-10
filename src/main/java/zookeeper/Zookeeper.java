@@ -40,7 +40,7 @@ public class Zookeeper {
         Routine routine = new Routine(30000);
         routine.start();
 
-        ExecutorService threadPool = Executors.newCachedThreadPool();
+        ExecutorService threadPool = Executors.newFixedThreadPool(10);
 
         while (true) {
             try {
@@ -558,14 +558,7 @@ public class Zookeeper {
     }
 
     public static void main(String[] args) {
-        String a = "";
-        String[] str = a.split(",");
-        System.out.println(str.length);
-        for (String s : str) {
-            if (s.equals(""))
-                System.out.println("empty String");
-        }
-        //Zookeeper zookeeper = new Zookeeper();
-        //zookeeper.run();
+        Zookeeper zookeeper = new Zookeeper();
+        zookeeper.run();
     }
 }
