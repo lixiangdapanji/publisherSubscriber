@@ -25,6 +25,14 @@ public class JsonUtil {
         return object;
     }
 
+    public static JSONObject loadToJson(Map<String, Integer> map){
+        JSONObject object = new JSONObject();
+        for(Map.Entry<String, Integer> entry : map.entrySet()){
+            object.put(entry.getKey(), entry.getValue());
+        }
+        return object;
+    }
+
     public static Map<String, Set<String>> jsonToMap(JSONObject object){
         Map<String, Set<String>> map = new HashMap<>();
         Set<String> keySet = object.keySet();
@@ -34,6 +42,15 @@ public class JsonUtil {
             for(int i = 0; i < array.size(); i++){
                 map.get(key).add((String)array.get(i));
             }
+        }
+        return map;
+    }
+
+    public static Map<String, Integer> jsonToLoadMap(JSONObject object){
+        Map<String, Integer> map = new HashMap<>();
+        Set<String> keySet = object.keySet();
+        for(String key : keySet){
+            map.putIfAbsent(key, (int)object.get(key));
         }
         return map;
     }
