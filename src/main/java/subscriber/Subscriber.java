@@ -149,7 +149,7 @@ public class Subscriber {
                         request.put("sender", subscriberAddr + ":" + subscriberPort);
                         request.put("action", "MISSING_MESSAGE");
                         request.put("content",  wrongId + ":" + (id - 1) );
-
+                        topicMap.put(topic, id);
                         try {
                             Socket socket = new Socket(serverID[0], Integer.valueOf(serverID[1]));
                             //send request

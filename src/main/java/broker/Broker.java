@@ -529,7 +529,6 @@ public class Broker {
      * @param message
      */
     private void sendMsg(JSONObject message) {
-        message.put("sender", id);
         JSONObject content = (JSONObject) message.get("content");
 
         int num = Integer.valueOf((String)content.get("id"));
@@ -540,6 +539,9 @@ public class Broker {
         String serverId = ip + ":" + port;
         String key = serverId + ":" + topic;
         Set<String> clientSet = serverClientMap.get(key);
+
+        routingServer(topic, message);
+        message.put("sender", id);
 
         countMsgMap.put(num, content.toString());
         if (countMsgMap.size() == 10) {
@@ -568,7 +570,6 @@ public class Broker {
                 }
             }
         }
-        routingServer(topic, message);
     }
 
     //Todo 3: write to log
