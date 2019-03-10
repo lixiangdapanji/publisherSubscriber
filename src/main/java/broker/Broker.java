@@ -60,6 +60,7 @@ public class Broker {
         parser = new JSONParser();
         //allOne = new AllOne();
         serverLoad = new HashMap<>();
+        countMsgMap = new HashMap<>();
     }
 
     public void setIPAndPort(String ip, int port){
