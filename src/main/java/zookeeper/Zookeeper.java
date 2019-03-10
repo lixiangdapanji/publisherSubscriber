@@ -40,7 +40,7 @@ public class Zookeeper {
         Routine routine = new Routine(30000);
         routine.start();
 
-        ExecutorService threadPool = Executors.newCachedThreadPool();
+        ExecutorService threadPool = Executors.newFixedThreadPool(10);
 
         while (true) {
             try {
