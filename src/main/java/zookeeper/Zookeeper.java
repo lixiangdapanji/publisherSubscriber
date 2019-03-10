@@ -565,7 +565,7 @@ public class Zookeeper {
             if (s.equals(""))
                 System.out.println("empty String");
         }
-        //Zookeeper zookeeper = new Zookeeper();
-        //zookeeper.run();
+        Zookeeper zookeeper = new Zookeeper();
+        zookeeper.run();
     }
 }

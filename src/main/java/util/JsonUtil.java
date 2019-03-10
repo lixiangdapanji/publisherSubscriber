@@ -28,7 +28,7 @@ public class JsonUtil {
     public static JSONObject loadToJson(Map<String, Integer> map){
         JSONObject object = new JSONObject();
         for(Map.Entry<String, Integer> entry : map.entrySet()){
-            object.put(entry.getKey(), entry.getValue());
+            object.put(entry.getKey(), entry.getValue() + "");
         }
         return object;
     }
@@ -50,7 +50,7 @@ public class JsonUtil {
         Map<String, Integer> map = new HashMap<>();
         Set<String> keySet = object.keySet();
         for(String key : keySet){
-            map.putIfAbsent(key, (int)object.get(key));
+            map.putIfAbsent(key, Integer.valueOf((String)object.get(key)));
         }
         return map;
     }
