@@ -1,5 +1,6 @@
 package broker;
 
+import jdk.jfr.internal.BufferWriter;
 import message.Message;
 import message.MessageAction;
 import netscape.javascript.JSObject;
@@ -40,6 +41,8 @@ public class Broker {
 
     //给message编号
     private AtomicInteger msgCount;
+
+    private Map<Integer, String> countMsgMap;
 
     public Broker(){
     }
@@ -84,6 +87,7 @@ public class Broker {
         String messagecontent = (String) message.get("msg");
 
         int num = msgCount.incrementAndGet();
+
         System.out.println("increment id" + num);
         content.put("id", num + "");
         //content.put("message", messagecontent);
@@ -505,6 +509,14 @@ public class Broker {
         String serverId = ip + ":" + port;
         String key = serverId + ":" + topic;
         Set<String> clientSet = serverClientMap.get(key);
+
+        countMsgMap.put(num, content.toString());
+        if (countMsgMap.size() == 10) {
+            WriteTofileThread writeTofileThread = new WriteTofileThread(serverId);
+            writeTofileThread.run();
+            countMsgMap.clear();
+        }
+
         if(!(clientSet == null || clientSet.size() == 0)){
 
             Socket socket;
@@ -680,6 +692,31 @@ public class Broker {
         for(String broker : brokers){
             routingMap.get(topic).add(broker);
         }
+    }
+    private class WriteTofileThread extends Thread{
+        String serverId;
+        public WriteTofileThread(String serverId) {
+            this.serverId = serverId;
+        }
+        @Override
+        public void run(){
+            System.out.println("The message has reached 100 writing to file");
+            try {
+                String path = "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + serverId + "Message";
+                FileWriter fileWriter = new FileWriter(path, true);
+                BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+                for (Map.Entry<Integer, String> entry :countMsgMap.entrySet()) {
+                    bufferedWriter.write(entry.getKey() + ":" + entry.getValue());
+                }
+
+                bufferedWriter.close();
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
     }
 
     /**
