@@ -735,7 +735,7 @@ public class Broker {
             String msg = sc.nextLine();
             String[] msgKV = msg.split(":");
             int n = Integer.valueOf(msgKV[0]);
-            while((n >= from) && (n <= to)) {
+            if ((n >= from) && (n <= to)) {
                 sb.append(msg);
             }
         }
