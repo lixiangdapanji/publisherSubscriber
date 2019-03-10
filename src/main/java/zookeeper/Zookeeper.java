@@ -558,14 +558,7 @@ public class Zookeeper {
     }
 
     public static void main(String[] args) {
-        String a = "";
-        String[] str = a.split(",");
-        System.out.println(str.length);
-        for (String s : str) {
-            if (s.equals(""))
-                System.out.println("empty String");
-        }
-        //Zookeeper zookeeper = new Zookeeper();
-        //zookeeper.run();
+        Zookeeper zookeeper = new Zookeeper();
+        zookeeper.run();
     }
 }

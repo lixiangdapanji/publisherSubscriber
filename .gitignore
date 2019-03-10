@@ -79,3 +79,16 @@ fabric.properties
 # Editor-based Rest subscriber.Subscriber
 .idea/httpRequests
 
+.gradle/4.8/taskHistory/
+.gradle/5.2.1/
+.gradle/vcs-1/
+build/distributions/publisherSubscriber-1.0.tar
+build/generated/
+build/reports/tests/test/classes/
+build/reports/tests/test/packages/
+build/scripts/
+build/test-results/test/TEST-publisher.PublisherTest.xml
+build/tmp/compileJava/
+build/tmp/compileTestJava/
+src/main/resources/
+src/test/resources/

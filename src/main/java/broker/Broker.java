@@ -2,9 +2,10 @@ package broker;
 
 import message.Message;
 import message.MessageAction;
+
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
+import util.AllOne;
 import util.JsonUtil;
 
 
@@ -86,7 +87,6 @@ public class Broker {
         String messagecontent = (String) message.get("msg");
 
         int num = msgCount.incrementAndGet();
-
         System.out.println("increment id" + num);
         content.put("id", num + "");
         //content.put("message", messagecontent);
@@ -121,9 +121,12 @@ public class Broker {
             }
             serverClientMap.get(key).add(clientId);
             serverLoad.put(serverId, serverLoad.getOrDefault(serverId, 0) + 1);
+            //message.put("sender")
+            routingServer(topic, message);
         }catch (Exception e){
             e.printStackTrace();
         }
+
     }
 
     /**
@@ -171,6 +174,7 @@ public class Broker {
             String clientId = (String)content.get("client");
             String minLoad = "";
             int min = Integer.MAX_VALUE;
+            System.out.println("allocate clients in " + topicServerMap.get(topic).size() + " servers");
             for(String serverId : topicServerMap.get(topic)){
                 if(!serverLoad.containsKey(serverId)){
                     minLoad = serverId;
@@ -194,7 +198,7 @@ public class Broker {
             addClient.put("content", sendContent);
             System.out.println("Add client : " + addClient.toString());
             addClient(addClient);
-            routingServer(topic, addClient);
+
         }catch (Exception e){
             e.printStackTrace();
         }
@@ -213,10 +217,11 @@ public class Broker {
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
         topicServerMap.putIfAbsent(topic, new HashSet<>());
-        topicServerMap.get(topic).add(id);
         String brokers = (String)content.get("brokers");
         String[] brokerlist = brokers.split(",");
-
+        for(String broker : brokerlist){
+            topicServerMap.get(topic).add(broker);
+        }
 
 
         List<Integer> red = new ArrayList<>();
@@ -264,23 +269,12 @@ public class Broker {
     }
 
     private void notifyAddEdge(String topic, List<String[]> pairs){
+        System.out.println("notify other servers to add" + pairs.size() + " edges" );
         for(String[] pair : pairs){
             String server1 = pair[0];
             String server2 = pair[1];
-            if(server1.equals(id)){
-                if(!routingMap.containsKey(topic)){
-                    routingMap.put(topic, new HashSet<>());
-                }
-                routingMap.get(topic).add(server2);
-            }else if(server2.equals(id)){
-                if(!routingMap.containsKey(topic)){
-                    routingMap.put(topic, new HashSet<>());
-                }
-                routingMap.get(topic).add(server1);
-            }else{
-                sendEdge(topic, server1, server2);
-                sendEdge(topic, server2, server1);
-            }
+            sendEdge(topic, server1, server2);
+            sendEdge(topic, server2, server1);
         }
     }
 
@@ -330,13 +324,17 @@ public class Broker {
      *                content:____}
      */
     private void routingServer(String topic, JSONObject message) {
-        System.out.println("routingServer is called.");
+        System.out.println(topic + ": routingServer is called.");
+        System.out.println(message.toJSONString());
         if(!routingMap.containsKey(topic)){
+            System.out.println("No server to routing");
             return;
         }
         Set<String> serverSet = routingMap.get(topic);
         Socket socket;
         String sender = (String)message.get("sender");
+        message.put("sender", id);
+        List<String> failed = new ArrayList<>();
         for(String serverID : serverSet){
             if(serverID.equals(sender)){
                 continue;
@@ -353,13 +351,40 @@ public class Broker {
                 printStream.flush();
                 printStream.close();
                 socket.close();
-            }catch (Exception e){
-                e.printStackTrace();
+            }catch (IOException e){
+                failed.add(serverID);
             }
 
         }
+        if(failed.size() > 0){
+            sendBrokerDown(failed);
+        }
     }
 
+    /**
+     *
+     * @param faileds
+     */
+    private void sendBrokerDown(List<String> faileds){
+        JSONObject object = new JSONObject();
+        object.put("sender", id);
+        object.put("action", MessageAction.SERVER_FAIL);
+        StringBuilder sb = new StringBuilder();
+        for(String failed : faileds){
+            sb.append(failed + ",");
+        }
+        object.put("content", sb.toString());
+        try {
+            Socket socket = new Socket(zookeeperIp, zookeeperPort);
+            socket.setSoTimeout(1000);
+            PrintStream printStream = new PrintStream(socket.getOutputStream());
+            printStream.println(object.toJSONString());
+            printStream.close();
+            socket.close();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+    }
 
     /**
      *add server on topic. in a spanning tree.
@@ -375,6 +400,7 @@ public class Broker {
         }
         //allOne.inc(serverId);
         routingMap.get(topic).add(serverId);
+        //System.out.println(topic + ": edges：" + serverId + "added");
     }
 
 
@@ -404,6 +430,7 @@ public class Broker {
         topicServerMap.get(topic).add(serverID);
         //allOne.inc(serverID);
 
+        System.out.println("Add " + serverID + " to " + needToAdd);
         sendEdge(topic, needToAdd, serverID);
         sendEdge(topic, serverID, needToAdd);
 
@@ -472,6 +499,10 @@ public class Broker {
         serverClientMap = JsonUtil.jsonToMap(serverClientObject);
         topicServerMap = JsonUtil.jsonToMap(topicServerObject);
         serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
+
+        System.out.println("Synchronized data serverclientmap size: " + serverClientMap.size());
+        System.out.println("Synchronized data topicServerMap size: " + topicServerMap.size());
+        System.out.println("Synchronized data serverLoad size: " + serverLoad.size());
     }
 
     /**
@@ -498,6 +529,7 @@ public class Broker {
      * @param message
      */
     private void sendMsg(JSONObject message) {
+        message.put("sender", id);
         JSONObject content = (JSONObject) message.get("content");
 
         int num = Integer.valueOf((String)content.get("id"));
@@ -613,10 +645,13 @@ public class Broker {
         return true;
     }
 
+
     private void brokerFailed(JSONObject message){
         JSONObject content = (JSONObject)message.get("content");
         String topic = (String)content.get("topic");
         String broker = (String)content.get("broker");
+
+        Set<String> clients = serverClientMap.get(broker + ":" + topic);
 
         JSONObject delServerObject = new JSONObject();
         delServerObject.put("sender", id);
@@ -638,15 +673,29 @@ public class Broker {
         buildContent.put("brokers", sb.toString());
         buildObject.put("content", buildContent);
         List<String[]> pairs = buildSpanningTree(buildObject);
+
+        refreshEdges(topic, pairs);
+
+
+        for(String client : clients){
+            JSONObject alloMsg = new JSONObject();
+            JSONObject alloMsgContent = new JSONObject();
+            alloMsgContent.put("topic", topic);
+            alloMsgContent.put("client", client);
+            alloMsg.put("content", alloMsgContent);
+            allocateClient(alloMsg);
+        }
+    }
+
+    private void refreshEdges(String topic, List<String[]> pairs){
         Map<String, Set<String>> graph = new HashMap<>();
         for(String[] pair : pairs){
             graph.putIfAbsent(pair[0], new HashSet<>());
             graph.get(pair[0]).add(pair[1]);
+            graph.putIfAbsent(pair[1], new HashSet<>());
+            graph.get(pair[1]).add(pair[0]);
         }
-        refreshEdges(topic, graph);
-    }
 
-    private void refreshEdges(String topic, Map<String, Set<String>> graph){
         for(Map.Entry<String, Set<String>> entry : graph.entrySet()){
             String key = entry.getKey();
             Set<String> servers = entry.getValue();
@@ -662,6 +711,17 @@ public class Broker {
             JSONObject content = new JSONObject();
             content.put("topic", topic);
             content.put("brokers", sb.toString());
+
+
+            Set<String> allServers = graph.keySet();
+            sb = new StringBuilder();
+            for(String server : allServers){
+                sb.append(server + ",");
+            }
+            sb.deleteCharAt(sb.length() - 1);
+            content.put("allbrokers", sb.toString());
+            object.put("content", content);
+            System.out.println("rebuild edge: " + key);
             if(key.equals(id)){
                 rebuildEdges(object);
                 continue;
@@ -690,7 +750,15 @@ public class Broker {
         for(String broker : brokers){
             routingMap.get(topic).add(broker);
         }
+
+        String[] allBrokers = ((String)content.get("allbrokers")).split(",");
+        topicServerMap.remove(topic);
+        topicServerMap.put(topic, new HashSet<>());
+        for(String broker : allBrokers){
+            topicServerMap.get(topic).add(broker);
+        }
     }
+
     private class WriteToFileThread extends Thread{
         String serverId;
         public WriteToFileThread(String serverId) {
@@ -716,8 +784,6 @@ public class Broker {
         }
 
     }
-
-
 
     private void missMsgHandler(JSONObject message) {
         System.out.println("Detect message missing");
@@ -774,12 +840,12 @@ public class Broker {
         }
     }
 
-
     /**
      * inner thread class. Responsible to handle all kinds of actions.
      */
     private class Handler extends Thread{
         private Socket socket;
+
         Handler(Socket socket){
             this.socket = socket;
         }
@@ -816,8 +882,8 @@ public class Broker {
                         break;
                     case MessageAction.BUILD_SPANNING_TREE:
                         List<String[]> pairs = buildSpanningTree(object);
-                        String topic = (String)object.get("topic");
-                        notifyAddEdge(topic, pairs);
+                        String topic = (String)((JSONObject)object.get("content")).get("topic");
+                        refreshEdges(topic, pairs);
                         break;
                     case MessageAction.SEND_MESSAGE:
                         sendMsg(object);
@@ -840,7 +906,7 @@ public class Broker {
                     case MessageAction.REBUILD_EDGES:
                         rebuildEdges(object);
                         break;
-                    case MessageAction.MISSI_MESSAGE:
+                    case MessageAction.MISS_MESSAGE:
                         missMsgHandler(object);
                 }
 

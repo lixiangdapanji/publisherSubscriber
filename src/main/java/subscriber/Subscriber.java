@@ -7,10 +7,7 @@ import org.json.simple.parser.ParseException;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
-
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
 
 /**
  *
@@ -41,12 +38,13 @@ public class Subscriber {
 
 
     /**
-     * @param topic
+     *
      */
-    public void registerTopic(String topic) {
-        if (!topicMap.containsKey(topic)) {
-            throw new IllegalArgumentException("Publisher does not support this topic");
-        }
+    public void registerTopic() {
+
+        List<String> keysAsArray = new ArrayList<>(topicMap.keySet());
+        Random r = new Random();
+        String topic = keysAsArray.get(r.nextInt(keysAsArray.size()));
 
         JSONObject obj = new JSONObject();
         JSONObject topicObj = new JSONObject();
@@ -187,7 +185,8 @@ public class Subscriber {
 
             Subscriber subscriber1 = new Subscriber(SUBSCRIBER1_ADDR, SUBSCRIBER1_PORT, ZOOKEEPER_ADDR, ZOOKEEPER_PORT);
             subscriber1.getTopic();
-            subscriber1.registerTopic("Topic_1");
+
+            subscriber1.registerTopic();
             System.out.println("Subscriber on " + SUBSCRIBER1_ADDR + ":"+ SUBSCRIBER1_PORT + " register with topic " + TOPIC);
             subscriber1.start();
 
@@ -199,4 +198,3 @@ public class Subscriber {
         }
     }
 }
-
