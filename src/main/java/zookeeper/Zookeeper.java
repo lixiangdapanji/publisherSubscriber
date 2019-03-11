@@ -3,6 +3,7 @@ package zookeeper;
 import message.MessageAction;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import util.JsonUtil;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -33,7 +34,7 @@ public class Zookeeper {
             System.out.println("Server listening at port " + zookeeper_port);
         } catch (Exception e) {
             System.out.println("Exception starting zookeeper.");
-            e.getStackTrace();
+            e.printStackTrace();
             return;
         }
 

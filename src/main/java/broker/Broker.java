@@ -1,21 +1,15 @@
 package broker;
 
-import message.Message;
 import message.MessageAction;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import util.AllOne;
 import util.JsonUtil;
 
-
-import javax.print.attribute.standard.Severity;
-import javax.security.auth.login.FailedLoginException;
 import java.io.*;
 import java.net.ConnectException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.sql.SQLOutput;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -311,8 +305,8 @@ public class Broker {
                     Socket socket = new Socket(ip, port);
                     PrintStream printStream = new PrintStream(socket.getOutputStream());
                     printStream.println(object.toJSONString());
-                    printStream.close();
-                    socket.close();
+                    //printStream.close();
+                    //socket.close();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -347,7 +341,7 @@ public class Broker {
         JSONObject content = new JSONObject();
         content.put("topic", topic);
         content.put("server", server2);
-        content.put("leader", leaderMap.get(topic));
+        //content.put("leader", leaderMap.get(topic));
         message.put("content", content);
         if (server1.equals(id)) {
             addEdge(message);
@@ -358,13 +352,13 @@ public class Broker {
         int port = Integer.valueOf(server1.split(":")[1]);
         try {
             Socket socket = new Socket(ip, port);
-            socket.setSoTimeout(1000);
+            //socket.setSoTimeout(1000);
 
             PrintStream printStream = new PrintStream(socket.getOutputStream());
             printStream.println(message.toJSONString());
-            printStream.flush();
-            printStream.close();
-            socket.close();
+            //printStream.flush();
+            //printStream.close();
+            //socket.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -399,13 +393,13 @@ public class Broker {
             int port = Integer.valueOf(server[1]);
             try {
                 socket = new Socket(ip, port);
-                socket.setSoTimeout(1000);
+                //socket.setSoTimeout(1000);
 
                 PrintStream printStream = new PrintStream(socket.getOutputStream());
                 printStream.println(message.toJSONString());
                 printStream.flush();
-                printStream.close();
-                socket.close();
+                //printStream.close();
+                //socket.close();
             } catch (IOException e) {
                 failed.add(serverID);
             }
@@ -430,11 +424,11 @@ public class Broker {
         object.put("content", sb.toString());
         try {
             Socket socket = new Socket(zookeeperIp, zookeeperPort);
-            socket.setSoTimeout(1000);
+            //socket.setSoTimeout(1000);
             PrintStream printStream = new PrintStream(socket.getOutputStream());
             printStream.println(object.toJSONString());
-            printStream.close();
-            socket.close();
+            //printStream.close();
+            //socket.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -450,18 +444,22 @@ public class Broker {
         JSONObject content = (JSONObject) message.get("content");
         String topic = (String) content.get("topic");
         String serverId = (String) content.get("server");
-        String leader = (String) content.get("leader");
+        String leader = (String) message.get("sender");
 
         leaderMap.put(topic, leader);
-        if (!topicCount.containsKey(topic)) {
-            topicCount.put(topic, new AtomicInteger(0));
-        }
+//        if (!topicCount.containsKey(topic)) {
+//            topicCount.put(topic, new AtomicInteger(0));
+//        }
 
         if (!routingMap.containsKey(topic)) {
             routingMap.put(topic, new HashSet<>());
         }
-        //allOne.inc(serverId);
         routingMap.get(topic).add(serverId);
+
+//        if(!topicServerMap.containsKey(topic)){
+//            topicServerMap.put(topic,new HashSet<>());
+//        }
+//        topicServerMap.get(topic).add(serverId);
         //System.out.println(topic + ": edges：" + serverId + "added");
     }
 
@@ -498,7 +496,18 @@ public class Broker {
         sendEdge(topic, needToAdd, serverID);
         sendEdge(topic, serverID, needToAdd);
 
-        sendSynchronizeData(serverID);
+        try {
+            Thread.sleep(500);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        sendSynchronizeData(serverID, topic);
+
+        try {
+            Thread.sleep(500);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         JSONObject addServerObject = new JSONObject();
         addServerObject.put("sender", id);
@@ -525,16 +534,47 @@ public class Broker {
      *
      * @param serverID
      */
-    private void sendSynchronizeData(String serverID) {
-        JSONObject serverClientObject = JsonUtil.mapToJson(serverClientMap);
-        JSONObject topicServerObject = JsonUtil.mapToJson(topicServerMap);
-        JSONObject serverLoadObject = JsonUtil.loadToJson(serverLoad);
+    private void sendSynchronizeData(String serverID, String topic) {
         JSONObject message = new JSONObject();
+
+        Map<String, Set<String>> clientMap = new HashMap<>();
+        for (String key : serverClientMap.keySet()) {
+            if (key.endsWith(topic))
+                clientMap.put(key, serverClientMap.get(key));
+        }
+        if (!clientMap.isEmpty()) {
+            JSONObject serverClientObject = JsonUtil.mapToJson(clientMap);
+            message.put("server_client_map", serverClientObject);
+        } else {
+            message.put("server_client_map", "");
+        }
+
+        Map<String, Set<String>> brokerGroup = new HashMap<>();
+        brokerGroup.put(topic, topicServerMap.get(topic));
+        JSONObject topicServerObject = JsonUtil.mapToJson(brokerGroup);
+        message.put("topic_server", topicServerObject);
+
+        Map<String, Integer> load = new HashMap<>();
+        for (String broker : serverLoad.keySet()) {
+            if (topicServerMap.get(topic).contains(broker))
+                load.put(broker, serverLoad.get(broker));
+        }
+        if (!load.isEmpty()) {
+            JSONObject serverLoadObject = JsonUtil.loadToJson(load);
+            message.put("server_load", serverLoadObject);
+        } else {
+            message.put("server_load", "");
+        }
+
+        //JSONObject serverClientObject = JsonUtil.mapToJson(serverClientMap);
+        //JSONObject topicServerObject = JsonUtil.mapToJson(topicServerMap);
+        //JSONObject serverLoadObject = JsonUtil.loadToJson(serverLoad);
+        //JSONObject message = new JSONObject();
         message.put("sender", id);
         message.put("action", MessageAction.SYNCHRONIZE);
-        message.put("server_client_map", serverClientObject);
-        message.put("topic_server", topicServerObject);
-        message.put("server_load", serverLoadObject);
+        //message.put("server_client_map", serverClientObject);
+        //message.put("topic_server", topicServerObject);
+        //message.put("server_load", serverLoadObject);
         try {
             String[] server = serverID.split(":");
             String ip = server[0];
@@ -544,8 +584,8 @@ public class Broker {
             PrintStream printStream = new PrintStream(socket.getOutputStream());
             printStream.println(message.toJSONString());
             printStream.flush();
-            printStream.close();
-            socket.close();
+            //printStream.close();
+            //socket.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -558,12 +598,20 @@ public class Broker {
      * @param message
      */
     private void synchronizedData(JSONObject message) {
-        JSONObject serverClientObject = (JSONObject) message.get("server_client_map");
+        if (!((String) message.get("server_client_map")).equals("")) {
+            JSONObject serverClientObject = (JSONObject) message.get("server_client_map");
+            serverClientMap = JsonUtil.jsonToMap(serverClientObject);
+        }
+        if (!((String) message.get("server_load")).equals("")) {
+            JSONObject serverLoadObject = (JSONObject) message.get("server_load");
+            serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
+        }
+//        JSONObject serverClientObject = (JSONObject) message.get("server_client_map");
         JSONObject topicServerObject = (JSONObject) message.get("topic_server");
-        JSONObject serverLoadObject = (JSONObject) message.get("server_load");
-        serverClientMap = JsonUtil.jsonToMap(serverClientObject);
+//        JSONObject serverLoadObject = (JSONObject) message.get("server_load");
+//        serverClientMap = JsonUtil.jsonToMap(serverClientObject);
         topicServerMap = JsonUtil.jsonToMap(topicServerObject);
-        serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
+//        serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
 
         System.out.println("Synchronized data serverclientmap size: " + serverClientMap.size());
         System.out.println("Synchronized data topicServerMap size: " + topicServerMap.size());
@@ -602,6 +650,9 @@ public class Broker {
         int num = Integer.valueOf((String) content.get("id"));
         System.out.println("message id:" + num);
 
+        if (!topicCount.containsKey(topic)) {
+            topicCount.put(topic, new AtomicInteger(0));
+        }
         int curCount = topicCount.get(topic).get();
         topicCount.get(topic).set(num);
 
@@ -632,8 +683,8 @@ public class Broker {
                     PrintStream printStream = new PrintStream(socket.getOutputStream());
                     printStream.println(message.toJSONString());
                     printStream.flush();
-                    printStream.close();
-                    socket.close();
+                    //printStream.close();
+                    //socket.close();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -710,7 +761,7 @@ public class Broker {
             PrintStream printStream = new PrintStream(socket.getOutputStream());
             printStream.println(object.toJSONString());
             printStream.flush();
-            printStream.close();
+            //printStream.close();
 //            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 //            StringBuilder sb = new StringBuilder();
 //            String line;
@@ -722,7 +773,7 @@ public class Broker {
 //            if(action.equals(MessageAction.OK)){
 //                success = true;
 //            }
-            socket.close();
+            //socket.close();
         } catch (UnknownHostException e) {
             System.out.println("Unknown host!");
         } catch (ConnectException e) {
@@ -974,7 +1025,7 @@ public class Broker {
 
         @Override
         public void run() {
-            System.out.println("handler running");
+            //System.out.println("handler running");
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 //StringBuilder sb = new StringBuilder();
@@ -982,7 +1033,8 @@ public class Broker {
 //                while((inputLine = reader.readLine()) != null){
 //                    sb.append(inputLine);
 //                }
-                socket.close();
+                //socket.close();
+                System.out.println(inputLine);
                 JSONObject object = (JSONObject) parser.parse(inputLine);
                 String action = (String) object.get("action");
                 System.out.println("Action: " + action);
@@ -1030,6 +1082,8 @@ public class Broker {
                         missMsgHandler(object);
                 }
 
+                reader.close();
+                socket.close();
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -1060,6 +1114,7 @@ public class Broker {
                 Socket socket = serverSocket.accept();
 
                 Handler handler = new Handler(socket);
+                //handler.start();
                 threadPool.execute(handler);
             }
         } catch (Exception e) {
