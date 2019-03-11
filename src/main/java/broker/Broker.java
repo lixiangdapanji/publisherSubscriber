@@ -1,6 +1,7 @@
 package broker;
 
 import message.MessageAction;
+
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import util.JsonUtil;
@@ -41,7 +42,7 @@ public class Broker {
     private Map<String, AtomicInteger> topicCount;
     //private AtomicInteger msgCount;
 
-    private Map<Integer, String> countMsgMap;
+    private Map<String, List<String>> topicMsgMap;
 
     public Broker() {
     }
@@ -59,9 +60,10 @@ public class Broker {
         parser = new JSONParser();
         //allOne = new AllOne();
         serverLoad = new HashMap<>();
-        countMsgMap = new HashMap<>();
+        topicMsgMap = new HashMap<>();
         leaderMap = new HashMap<>();
         topicCount = new HashMap<>();
+        topicMsgMap = new HashMap<>();
     }
 
     public void setIPAndPort(String ip, int port) {
@@ -663,11 +665,15 @@ public class Broker {
         routingServer(topic, message);
         message.put("sender", id);
 
-        countMsgMap.put(num, content.toString());
-        if (countMsgMap.size() == 10) {
-            WriteToFileThread writeTofileThread = new WriteToFileThread(serverId);
+        if (topicMsgMap.get(topic) == null) {
+            topicMsgMap.put(topic, new ArrayList<>());
+        }
+        topicMsgMap.get(topic).add(num + ": " +content.toString());
+
+        if (topicMsgMap.get(topic).size() == 10) {
+            WriteToFileThread writeTofileThread = new WriteToFileThread(serverId, topic);
             writeTofileThread.run();
-            countMsgMap.clear();
+            topicMsgMap.get(topic).clear();
         }
 
         if (!(clientSet == null || clientSet.size() == 0)) {
@@ -930,23 +936,27 @@ public class Broker {
 
     private class WriteToFileThread extends Thread {
         String serverId;
+        String topic;
 
-        public WriteToFileThread(String serverId) {
+        public WriteToFileThread(String serverId, String topic) {
             this.serverId = serverId;
+            this.topic = topic;
         }
 
         @Override
         public void run() {
             System.out.println("The message has reached 100 writing to file");
             try {
-                String path = "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + serverId + "Message";
+                String path = "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + topic + serverId + "Message";
                 FileWriter fileWriter = new FileWriter(path, true);
                 BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
-                for (Map.Entry<Integer, String> entry : countMsgMap.entrySet()) {
-                    bufferedWriter.write(entry.getKey() + ":" + entry.getValue() + "\n");
-                }
-
+                PrintWriter out = new PrintWriter(bufferedWriter);
+                for (String s : topicMsgMap.get(topic)) {
+                        out.println(s);
+                    }
+                out.close();
                 bufferedWriter.close();
+                fileWriter.close();
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
             } catch (IOException e) {
@@ -955,6 +965,64 @@ public class Broker {
         }
 
     }
+
+
+//    private void missMsgHandler(JSONObject message) {
+//        System.out.println("Detect message missing");
+//        String clientInfo = (String)message.get("sender");
+//
+//        JSONObject content = (JSONObject) message.get("content");
+//        String[] msgRange = content.toString().split(":");
+//        int from = Integer.valueOf(msgRange[0]);
+//        int to = Integer.valueOf(msgRange[1]);
+//        StringBuilder sb = new StringBuilder();
+//
+//        if ((to - from) >=10) {
+//            String filePath =  "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + ip + ":"+ port + "Message";;
+//            Scanner sc = new Scanner(filePath);
+//            while (sc.hasNextLine()) {
+//                String msg = sc.nextLine();
+//                String[] msgKV = msg.split(":");
+//                int n = Integer.valueOf(msgKV[0]);
+//                if ((n >= from) && (n <= to)) {
+//                    sb.append(msg);
+//                }
+//            }
+//        }
+//        System.out.println(sb.toString());
+//
+//        JSONObject object = new JSONObject();
+//        object.put("sender", clientInfo);
+//        object.put("action", MessageAction.SEND_MESSAGE);
+//        object.put("content", sb.toString());
+//
+//        SendMissingMegThread sendMissingMegThread = new SendMissingMegThread(object, clientInfo);
+//        sendMissingMegThread.run();
+//    }
+//
+//    private class SendMissingMegThread extends Thread{
+//        private String clientInfo;
+//        private JSONObject message;
+//
+//        public SendMissingMegThread(JSONObject message, String clientInfo) {
+//            this.message = message;
+//            this.clientInfo = clientInfo;
+//        }
+//        @Override
+//        public void run(){
+//            try {
+//                String[] infos = clientInfo.split(":");
+//                String clientIP = infos[0];
+//                int clientPort = Integer.valueOf(infos[1]);
+//                Socket socket = new Socket(clientIP, clientPort);
+//
+//                PrintStream out = new PrintStream(socket.getOutputStream());
+//                out.println(message.toString());
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//    }
 
     private void missMsgHandler(JSONObject message) {
         System.out.println("Detect message missing");
@@ -1012,6 +1080,7 @@ public class Broker {
             }
         }
     }
+
 
     /**
      * inner thread class. Responsible to handle all kinds of actions.
@@ -1079,7 +1148,8 @@ public class Broker {
                         rebuildEdges(object);
                         break;
                     case MessageAction.MISS_MESSAGE:
-                        missMsgHandler(object);
+                        //missMsgHandler(object);
+                        break;
                 }
 
                 reader.close();
