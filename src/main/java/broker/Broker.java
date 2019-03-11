@@ -8,6 +8,8 @@ import util.AllOne;
 import util.JsonUtil;
 
 
+import javax.print.attribute.standard.Severity;
+import javax.security.auth.login.FailedLoginException;
 import java.io.*;
 import java.net.ConnectException;
 import java.net.ServerSocket;
@@ -15,6 +17,8 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.sql.SQLOutput;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Broker {
@@ -92,7 +96,6 @@ public class Broker {
         String messagecontent = (String) message.get("msg");
 
         int num = topicCount.get(topic).incrementAndGet();
-        System.out.println("increment id" + num);
         content.put("id", num + "");
         //content.put("message", messagecontent);
         JSONObject object = new JSONObject();
@@ -225,6 +228,7 @@ public class Broker {
         System.out.println("buildSpanningTree is called.");
         JSONObject content = (JSONObject) message.get("content");
         String topic = (String) content.get("topic");
+        String failed = (String) content.get("failed");
 
         leaderMap.put(topic, id);
         topicServerMap.put(topic, new HashSet<>());
@@ -283,25 +287,24 @@ public class Broker {
             System.out.println();
         }
 
-        if (routing.size() > 1) {
-            for (Map.Entry<String, String> entry : routing.entrySet()) {
-                String key = entry.getKey();
-                JSONObject object = new JSONObject();
-                object.put("sender", id);
-                object.put("action", MessageAction.REBUILD_EDGES);
-                JSONObject sendContent = new JSONObject();
-                sendContent.put("topic", topic);
-                sendContent.put("brokers", entry.getValue());
-                sendContent.put("allbrokers", brokers);
-                sendContent.put("leader", id);
-                object.put("content", sendContent);
 
-                System.out.println("rebuild edge: " + key);
-                if (key.equals(id)) {
-                    rebuildEdges(object);
-                    continue;
-                }
+        for (Map.Entry<String, String> entry : routing.entrySet()) {
+            String key = entry.getKey();
+            JSONObject object = new JSONObject();
+            object.put("sender", id);
+            object.put("action", MessageAction.REBUILD_EDGES);
+            JSONObject sendContent = new JSONObject();
+            sendContent.put("topic", topic);
+            sendContent.put("brokers", entry.getValue());
+            sendContent.put("allbrokers", brokers);
+            sendContent.put("leader", id);
+            sendContent.put("failed", failed);
+            object.put("content", sendContent);
 
+            System.out.println("rebuild edge: " + key);
+            if (key.equals(id)) {
+                rebuildEdges(object);
+            } else {
                 String ip = key.split(":")[0];
                 int port = Integer.valueOf(key.split(":")[1]);
                 try {
@@ -382,6 +385,7 @@ public class Broker {
             return;
         }
         Set<String> serverSet = routingMap.get(topic);
+        if (serverSet == null) return;
         Socket socket;
         String sender = (String) message.get("sender");
         message.put("sender", id);
@@ -637,7 +641,7 @@ public class Broker {
         }
 
         if (!sender.equals(id) && curCount != num - 1)
-            System.out.println("missing msg topic: " + topic + " from " + (curCount + 1) + " to " + (num-1));
+            System.out.println("missing msg topic: " + topic + " from " + (curCount + 1) + " to " + (num - 1));
 //       {
 //            JSONObject request = new JSONObject();
 //            request.put("sender", subscriberAddr + ":" + subscriberPort);
@@ -739,13 +743,21 @@ public class Broker {
         String topic = (String) content.get("topic");
         String broker = (String) content.get("broker");
 
-        Set<String> clients = serverClientMap.get(broker + ":" + topic);
-
-        JSONObject delServerObject = new JSONObject();
-        delServerObject.put("sender", id);
-        delServerObject.put("action", MessageAction.DEL_SERVER);
-        delServerObject.put("content", content);
-        deleteServer(delServerObject);
+        String key = broker + ":" + topic;
+        Set<String> clients = serverClientMap.get(key);
+//        JSONObject delServerObject = new JSONObject();
+//        delServerObject.put("sender", id);
+//        delServerObject.put("action", MessageAction.DEL_SERVER);
+//        delServerObject.put("content", content);
+//        deleteServer(delServerObject);
+        if (topicServerMap.containsKey(topic)) {
+            topicServerMap.get(topic).remove(broker);
+        }
+        if (serverClientMap.containsKey(key)) {
+            serverClientMap.remove(key);
+        }
+        if (serverLoad.containsKey(broker))
+            serverLoad.remove(broker);
 
         JSONObject buildObject = new JSONObject();
         buildObject.put("sender", id);
@@ -757,8 +769,8 @@ public class Broker {
         for (String server : servers) {
             sb.append(server + ",");
         }
-        sb.deleteCharAt(sb.length() - 1);
         buildContent.put("brokers", sb.toString());
+        buildContent.put("failed", broker);
         buildObject.put("content", buildContent);
         buildSpanningTree(buildObject);
 
@@ -837,18 +849,31 @@ public class Broker {
             topicCount.put(topic, new AtomicInteger(0));
         }
 
-        String[] brokers = ((String) content.get("brokers")).split(",");
         routingMap.remove(topic);
         routingMap.put(topic, new HashSet<>());
-        for (String broker : brokers) {
-            routingMap.get(topic).add(broker);
+        String routing = (String) content.get("brokers");
+        if (routing != null && !routing.equals("")) {
+            String[] brokers = routing.split(",");
+            for (String broker : brokers) {
+                routingMap.get(topic).add(broker);
+            }
         }
 
-        String[] allBrokers = ((String) content.get("allbrokers")).split(",");
         topicServerMap.remove(topic);
         topicServerMap.put(topic, new HashSet<>());
-        for (String broker : allBrokers) {
-            topicServerMap.get(topic).add(broker);
+        String group = (String) content.get("allbrokers");
+        if (group != null && !group.equals("")) {
+            String[] allBrokers = group.split(",");
+            for (String broker : allBrokers) {
+                topicServerMap.get(topic).add(broker);
+            }
+        }
+
+        String failed = (String) content.get("failed");
+        if (serverLoad.containsKey(failed))
+            serverLoad.remove(failed);
+        if (failed != null && !leader.equals(id)) {
+            serverClientMap.remove(failed + ":" + topic);
         }
     }
 
@@ -971,9 +996,9 @@ public class Broker {
                     case MessageAction.ADD_SERVER:
                         addServer(object);
                         break;
-                    case MessageAction.DEL_SERVER:
-                        deleteServer(object);
-                        break;
+//                    case MessageAction.DEL_SERVER:
+//                        deleteServer(object);
+//                        break;
                     case MessageAction.ALLOCATE_CLIENT:
                         allocateClient(object);
                         break;
@@ -1029,11 +1054,13 @@ public class Broker {
             } else {
                 System.out.println("Register succeed!");
             }
+
+            ExecutorService threadPool = Executors.newFixedThreadPool(10);
             while (true) {
                 Socket socket = serverSocket.accept();
-                System.out.println("accept");
+
                 Handler handler = new Handler(socket);
-                handler.run();
+                threadPool.execute(handler);
             }
         } catch (Exception e) {
             e.printStackTrace();

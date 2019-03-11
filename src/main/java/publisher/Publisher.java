@@ -71,7 +71,7 @@ public class Publisher extends Thread {
             client.close();
         } catch (Exception e) {
             System.out.println("Exception in getServerAddr.");
-            e.getStackTrace();
+            e.printStackTrace();
         } finally {
             if (client != null) {
                 try {
@@ -104,7 +104,7 @@ public class Publisher extends Thread {
                 break;
             } catch (Exception e) {
                 System.out.println("Exception in sendMsg.");
-                e.getStackTrace();
+                e.printStackTrace();
                 try {
                     Thread.sleep(5000);
                 } catch (Exception se) {

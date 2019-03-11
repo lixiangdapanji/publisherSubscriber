@@ -8,6 +8,9 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  *
@@ -20,7 +23,7 @@ public class Subscriber {
     private String zookeeperAddr;
     private int zookeeperPort;
 
-    private Map<String, Integer> topicMap;
+    private Map<String, AtomicInteger> topicMap;
 
     /**
      * @param subscriberAddr
@@ -92,7 +95,7 @@ public class Subscriber {
             String content = (String) response.get("content");
             String[] topics = content.split(",");
             for (String s : topics) {
-                topicMap.put(s, -1);
+                topicMap.put(s, new AtomicInteger(0));
             }
             socket.close();
         } catch (IOException e) {
@@ -107,10 +110,12 @@ public class Subscriber {
      */
     public void start() throws IOException {
         ServerSocket serverSocket = new ServerSocket(subscriberPort);
+
+        ExecutorService threadPool = Executors.newFixedThreadPool(10);
         while (true) {
             Socket socket = serverSocket.accept();
             SubscriberThread subscriberThread = new SubscriberThread(socket);
-            subscriberThread.start();
+            threadPool.execute(subscriberThread);
         }
     }
 
@@ -128,39 +133,45 @@ public class Subscriber {
                 String in = ins.readLine();
                 JSONParser parser = new JSONParser();
                 JSONObject jsonObject = (JSONObject) parser.parse(in);
-                String action = (String)jsonObject.get("action");
-                System.out.println("Action: " + action);
+                String action = (String) jsonObject.get("action");
+
                 if (action.equals("SEND_MESSAGE")) {
                     JSONObject content = (JSONObject) jsonObject.get("content");
                     String sender = (String) jsonObject.get("sender");
                     String[] serverID = sender.split(":");
                     String topic = (String) content.get("topic");
                     String message = (String) content.get("msg");
-                    int id = Integer.valueOf((String)content.get("id"));
-                    if(topicMap.get(topic) == -1){
-                        topicMap.put(topic, (int)id);
-                    }else{
-                        topicMap.put(topic, topicMap.getOrDefault(topic, 0) + 1);
-                    }
-                    int wrongId = topicMap.get(topic);
-                    if (wrongId < id) {
-                        //notify server message missing
-                        JSONObject request = new JSONObject();
-                        request.put("sender", subscriberAddr + ":" + subscriberPort);
-                        request.put("action", "MISSING_MESSAGE");
-                        request.put("content",  wrongId + ":" + (id - 1) );
-                        topicMap.put(topic, id);
-                        try {
-                            Socket socket = new Socket(serverID[0], Integer.valueOf(serverID[1]));
-                            //send request
-                            PrintStream out = new PrintStream(socket.getOutputStream());
-                            out.println(request);
+                    int id = Integer.valueOf((String) content.get("id"));
 
-                        } catch (IOException e) {
-                            e.printStackTrace();
+                    int curCount = topicMap.get(topic).get();
+                    if (curCount == 0) {
+                        topicMap.get(topic).set(id);
+                    } else {
+                        if (curCount != id - 1) {
+                            System.out.println("missing msg topic: " + topic + " from " + (curCount + 1) + " to " + (id - 1));
                         }
+                        topicMap.get(topic).set(id);
                     }
-                    System.out.println(id + ": " + message);
+
+//                    int wrongId = topicMap.get(topic);
+//                    if (wrongId < id) {
+//                        //notify server message missing
+//                        JSONObject request = new JSONObject();
+//                        request.put("sender", subscriberAddr + ":" + subscriberPort);
+//                        request.put("action", "MISSING_MESSAGE");
+//                        request.put("content",  wrongId + ":" + (id - 1) );
+//                        topicMap.put(topic, id);
+//                        try {
+//                            Socket socket = new Socket(serverID[0], Integer.valueOf(serverID[1]));
+//                            //send request
+//                            PrintStream out = new PrintStream(socket.getOutputStream());
+//                            out.println(request);
+//
+//                        } catch (IOException e) {
+//                            e.printStackTrace();
+//                        }
+//                    }
+                    System.out.println(topic + " " + id + ": " + message);
                 }
 
                 ins.close();
@@ -172,6 +183,7 @@ public class Subscriber {
             }
         }
     }
+
     public static void main(String[] args) {
         try {
             //SUBSCRIBER1
@@ -187,7 +199,7 @@ public class Subscriber {
             subscriber1.getTopic();
 
             subscriber1.registerTopic();
-            System.out.println("Subscriber on " + SUBSCRIBER1_ADDR + ":"+ SUBSCRIBER1_PORT + " register with topic " + TOPIC);
+            System.out.println("Subscriber on " + SUBSCRIBER1_ADDR + ":" + SUBSCRIBER1_PORT + " register with topic " + TOPIC);
             subscriber1.start();
 
             //SUBSCRIBER2
