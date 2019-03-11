@@ -368,7 +368,7 @@ public class Zookeeper {
     }
 
     private void delServer(String brokerAddr) {
-        if (brokerAddr == null) return;
+        if (brokerAddr == null || !serverSet.contains(brokerAddr)) return;
         //find all topics managed by broker
         Set<String> topics = serverTopicSet.get(brokerAddr);
         loads.removeKey(brokerAddr);
