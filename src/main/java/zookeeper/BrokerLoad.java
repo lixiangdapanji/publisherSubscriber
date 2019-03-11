@@ -43,6 +43,7 @@ public class BrokerLoad {
         if (pos.set.isEmpty()) {
             removeBucket(pos);
         }
+        keysMap.remove(key);
     }
 
     //choose a key with minimum load
