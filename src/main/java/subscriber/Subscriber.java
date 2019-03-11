@@ -40,11 +40,11 @@ public class Subscriber {
     /**
      *
      */
-    public void registerTopic() {
+    public void registerTopic(String topic) {
 
-        List<String> keysAsArray = new ArrayList<>(topicMap.keySet());
-        Random r = new Random();
-        String topic = keysAsArray.get(r.nextInt(keysAsArray.size()));
+//        List<String> keysAsArray = new ArrayList<>(topicMap.keySet());
+//        Random r = new Random();
+//        String topic = keysAsArray.get(r.nextInt(keysAsArray.size()));
 
         JSONObject obj = new JSONObject();
         JSONObject topicObj = new JSONObject();
@@ -100,6 +100,16 @@ public class Subscriber {
         } catch (ParseException e) {
             e.printStackTrace();
         }
+        StringBuilder sb = new StringBuilder();
+        System.out.print("Select the topic to subscribe: ");
+        sb.append("{");
+        for (String topic : topicMap.keySet()) {
+            sb.append(topic);
+            sb.append(", ");
+        }
+        sb.delete(sb.length() - 2, sb.length());
+        sb.append("}");
+        System.out.println(sb.toString());
     }
 
     /**
@@ -120,6 +130,9 @@ public class Subscriber {
         public SubscriberThread(Socket socket) {
             this.socket = socket;
         }
+
+
+
 
         @Override
         public void run() {
@@ -161,8 +174,28 @@ public class Subscriber {
                         }
                     }
                     System.out.println(id + ": " + message);
-                }
+                    // delete client once the id == random, delete client message received should be in 20 - 300
+                    Random r = new Random();
+                    //int target = 20 + r.nextInt(300);
+                    int target = 10;
+                    if (id == target) {
+                        JSONObject request = new JSONObject();
+                        request.put("sender", subscriberAddr + ":" + subscriberPort);
+                        request.put("action", "DELETE_CLIENT");
+                        request.put("content",  wrongId + ":" + (id - 1) );
+                        topicMap.put(topic, id);
+                        try {
+                            Socket socket = new Socket(zookeeperAddr, zookeeperPort);
+                            //send request
+                            PrintStream out = new PrintStream(socket.getOutputStream());
+                            out.println(request);
 
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                }
                 ins.close();
                 socket.close();
             } catch (ParseException e) {
@@ -174,24 +207,19 @@ public class Subscriber {
     }
     public static void main(String[] args) {
         try {
-            //SUBSCRIBER1
-            final String SUBSCRIBER1_ADDR = "127.0.0.1";
+            final String SUBSCRIBER_ADDR = "127.0.0.1";
             Scanner scanner = new Scanner(System.in);
             System.out.print("Please input port number: ");
-            int SUBSCRIBER1_PORT = scanner.nextInt();
+            int SUBSCRIBER_PORT = Integer.valueOf(scanner.nextLine());
             final String ZOOKEEPER_ADDR = "127.0.0.1";
             int ZOOKEEPER_PORT = 8889;
-            String TOPIC = "";
 
-            Subscriber subscriber1 = new Subscriber(SUBSCRIBER1_ADDR, SUBSCRIBER1_PORT, ZOOKEEPER_ADDR, ZOOKEEPER_PORT);
+            Subscriber subscriber1 = new Subscriber(SUBSCRIBER_ADDR, SUBSCRIBER_PORT, ZOOKEEPER_ADDR, ZOOKEEPER_PORT);
             subscriber1.getTopic();
-
-            subscriber1.registerTopic();
-            System.out.println("Subscriber on " + SUBSCRIBER1_ADDR + ":"+ SUBSCRIBER1_PORT + " register with topic " + TOPIC);
+            String topic = scanner.nextLine();
+            subscriber1.registerTopic(topic);
+            System.out.println("Subscriber on " + SUBSCRIBER_ADDR + ":"+ SUBSCRIBER_PORT + " register with topic " + topic);
             subscriber1.start();
-
-            //SUBSCRIBER2
-            //SUBSCRIBER3
 
         } catch (IOException e) {
             e.printStackTrace();

@@ -71,7 +71,7 @@ public class Publisher extends Thread {
             client.close();
         } catch (Exception e) {
             System.out.println("Exception in getServerAddr.");
-            e.getStackTrace();
+            e.printStackTrace();
         } finally {
             if (client != null) {
                 try {

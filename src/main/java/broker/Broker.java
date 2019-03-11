@@ -783,63 +783,64 @@ public class Broker {
                 e.printStackTrace();
             }
         }
-
     }
 
-    private void missMsgHandler(JSONObject message) {
-        System.out.println("Detect message missing");
-        String clientInfo = (String)message.get("sender");
-
-        JSONObject content = (JSONObject) message.get("content");
-        String[] msgRange = content.toString().split(":");
-        int from = Integer.valueOf(msgRange[0]);
-        int to = Integer.valueOf(msgRange[1]);
-
-        String filePath =  "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + ip + ":"+ port + "Message";;
-        Scanner sc = new Scanner(filePath);
-        StringBuilder sb = new StringBuilder();
-        while (sc.hasNextLine()) {
-            String msg = sc.nextLine();
-            String[] msgKV = msg.split(":");
-            int n = Integer.valueOf(msgKV[0]);
-            if ((n >= from) && (n <= to)) {
-                sb.append(msg);
-            }
-        }
-        System.out.println(sb.toString());
-
-        JSONObject object = new JSONObject();
-        object.put("sender", clientInfo);
-        object.put("action", MessageAction.SEND_MESSAGE);
-        object.put("content", sb.toString());
-
-        SendMissingMegThread sendMissingMegThread = new SendMissingMegThread(object, clientInfo);
-        sendMissingMegThread.run();
-    }
-
-    private class SendMissingMegThread extends Thread{
-        private String clientInfo;
-        private JSONObject message;
-
-        public SendMissingMegThread(JSONObject message, String clientInfo) {
-            this.message = message;
-            this.clientInfo = clientInfo;
-        }
-        @Override
-        public void run(){
-            try {
-                String[] infos = clientInfo.split(":");
-                String clientIP = infos[0];
-                int clientPort = Integer.valueOf(infos[1]);
-                Socket socket = new Socket(clientIP, clientPort);
-
-                PrintStream out = new PrintStream(socket.getOutputStream());
-                out.println(message.toString());
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
+//    private void missMsgHandler(JSONObject message) {
+//        System.out.println("Detect message missing");
+//        String clientInfo = (String)message.get("sender");
+//
+//        JSONObject content = (JSONObject) message.get("content");
+//        String[] msgRange = content.toString().split(":");
+//        int from = Integer.valueOf(msgRange[0]);
+//        int to = Integer.valueOf(msgRange[1]);
+//        StringBuilder sb = new StringBuilder();
+//
+//        if ((to - from) >=10) {
+//            String filePath =  "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + ip + ":"+ port + "Message";;
+//            Scanner sc = new Scanner(filePath);
+//            while (sc.hasNextLine()) {
+//                String msg = sc.nextLine();
+//                String[] msgKV = msg.split(":");
+//                int n = Integer.valueOf(msgKV[0]);
+//                if ((n >= from) && (n <= to)) {
+//                    sb.append(msg);
+//                }
+//            }
+//        }
+//        System.out.println(sb.toString());
+//
+//        JSONObject object = new JSONObject();
+//        object.put("sender", clientInfo);
+//        object.put("action", MessageAction.SEND_MESSAGE);
+//        object.put("content", sb.toString());
+//
+//        SendMissingMegThread sendMissingMegThread = new SendMissingMegThread(object, clientInfo);
+//        sendMissingMegThread.run();
+//    }
+//
+//    private class SendMissingMegThread extends Thread{
+//        private String clientInfo;
+//        private JSONObject message;
+//
+//        public SendMissingMegThread(JSONObject message, String clientInfo) {
+//            this.message = message;
+//            this.clientInfo = clientInfo;
+//        }
+//        @Override
+//        public void run(){
+//            try {
+//                String[] infos = clientInfo.split(":");
+//                String clientIP = infos[0];
+//                int clientPort = Integer.valueOf(infos[1]);
+//                Socket socket = new Socket(clientIP, clientPort);
+//
+//                PrintStream out = new PrintStream(socket.getOutputStream());
+//                out.println(message.toString());
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//    }
 
     /**
      * inner thread class. Responsible to handle all kinds of actions.
@@ -908,7 +909,8 @@ public class Broker {
                         rebuildEdges(object);
                         break;
                     case MessageAction.MISS_MESSAGE:
-                        missMsgHandler(object);
+                        //missMsgHandler(object);
+                        break;
                 }
 
             }catch (Exception e){

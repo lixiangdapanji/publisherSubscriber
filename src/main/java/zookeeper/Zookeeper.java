@@ -533,10 +533,13 @@ public class Zookeeper {
                     String[] brokers = content.split(",");
                     for (String broker : brokers)
                         delServer(broker);
-                } else {
-                    System.out.println("action not supported");
+                } else if(action.equals("DELETE_CLIENT")){
+                    String topic = (String) json.get("content");
+                    String sender = (String) json.get("sender");
+                    delClient(topic, sender);
+                } else{
+                System.out.println("action not supported");
                 }
-
 
                 reader.close();
                 writer.close();
