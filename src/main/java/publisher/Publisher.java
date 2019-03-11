@@ -104,7 +104,19 @@ public class Publisher extends Thread {
                 break;
             } catch (Exception e) {
                 System.out.println("Exception in sendMsg.");
-                e.printStackTrace();
+                //e.printStackTrace();
+                JSONObject report = new JSONObject();
+                report.put("action","SERVER_FAIL");
+                report.put("content",brokerAddr);
+
+                try{
+                    Socket socket = new Socket(zookeeper_ip,zookeeper_port);
+                    PrintStream writer = new PrintStream(socket.getOutputStream());
+                    writer.println(report.toString());
+                }catch(Exception e1){
+                    System.out.println("cannot connect to zookeeper");
+                }
+
                 try {
                     Thread.sleep(5000);
                 } catch (Exception se) {

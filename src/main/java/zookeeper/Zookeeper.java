@@ -24,7 +24,7 @@ public class Zookeeper {
     private Map<String, String> leaderMap = new HashMap<>();
     private Map<String, Set<String>> serverTopicSet = new HashMap<>();
     private int zookeeper_port = 8889;
-    private int defaultGroupSize = 5;
+    private int defaultGroupSize = 3;
     private BrokerLoad loads = new BrokerLoad();
 
     private void run() {
@@ -507,15 +507,12 @@ public class Zookeeper {
                 } else if (action.equals("CLIENT_REGISTER")) {
                     JSONObject content = (JSONObject) json.get("content");
                     String sender = (String) json.get("sender");
-                    String topic = (String) content.get("topic");
+                    String topics = (String) content.get("topic");
+                    String[] topicList = topics.split(",");
 
-                    sent.put("action", "CLIENT_REGISTER");
-                    if (addClient(topic, sender)) {
-                        sent.put("content", "success");
-                    } else {
-                        sent.put("content", "fail");
-                    }
-                    writer.println(sent.toString());
+                    for(String topic: topicList)
+                        addClient(topic, sender);
+
                 } else if (action.equals("BROKER_REG")) {
                     String brokerAddr = (String) json.get("sender");
                     String content = (String) json.get("content");
