@@ -1,11 +1,9 @@
 package broker;
 
-import message.Message;
 import message.MessageAction;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import util.AllOne;
 import util.JsonUtil;
 
 
@@ -43,7 +41,7 @@ public class Broker {
     private Map<String, AtomicInteger> topicCount;
     //private AtomicInteger msgCount;
 
-    private Map<Integer, String> countMsgMap;
+    private Map<String, List<String>> topicMsgMap;
 
     public Broker() {
     }
@@ -61,9 +59,10 @@ public class Broker {
         parser = new JSONParser();
         //allOne = new AllOne();
         serverLoad = new HashMap<>();
-        countMsgMap = new HashMap<>();
+        topicMsgMap = new HashMap<>();
         leaderMap = new HashMap<>();
         topicCount = new HashMap<>();
+        topicMsgMap = new HashMap<>();
     }
 
     public void setIPAndPort(String ip, int port) {
@@ -608,11 +607,15 @@ public class Broker {
         routingServer(topic, message);
         message.put("sender", id);
 
-        countMsgMap.put(num, content.toString());
-        if (countMsgMap.size() == 10) {
-            WriteToFileThread writeTofileThread = new WriteToFileThread(serverId);
+        if (topicMsgMap.get(topic) == null) {
+            topicMsgMap.put(topic, new ArrayList<>());
+        }
+        topicMsgMap.get(topic).add(num + ": " +content.toString());
+
+        if (topicMsgMap.get(topic).size() == 10) {
+            WriteToFileThread writeTofileThread = new WriteToFileThread(serverId, topic);
             writeTofileThread.run();
-            countMsgMap.clear();
+            topicMsgMap.get(topic).clear();
         }
 
         if (!(clientSet == null || clientSet.size() == 0)) {
@@ -854,23 +857,27 @@ public class Broker {
 
     private class WriteToFileThread extends Thread {
         String serverId;
+        String topic;
 
-        public WriteToFileThread(String serverId) {
+        public WriteToFileThread(String serverId, String topic) {
             this.serverId = serverId;
+            this.topic = topic;
         }
 
         @Override
         public void run() {
             System.out.println("The message has reached 100 writing to file");
             try {
-                String path = "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + serverId + "Message";
+                String path = "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + topic + serverId + "Message";
                 FileWriter fileWriter = new FileWriter(path, true);
                 BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
-                for (Map.Entry<Integer, String> entry : countMsgMap.entrySet()) {
-                    bufferedWriter.write(entry.getKey() + ":" + entry.getValue() + "\n");
-                }
-
+                PrintWriter out = new PrintWriter(bufferedWriter);
+                for (String s : topicMsgMap.get(topic)) {
+                        out.println(s);
+                    }
+                out.close();
                 bufferedWriter.close();
+                fileWriter.close();
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
             } catch (IOException e) {
