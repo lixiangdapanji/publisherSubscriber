@@ -1,8 +1,8 @@
 package zookeeper;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import message.MessageAction;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 import util.JsonUtil;
 
 import java.io.*;
@@ -24,7 +24,7 @@ public class Zookeeper {
     private Map<String, String> leaderMap = new HashMap<>();
     private Map<String, Set<String>> serverTopicSet = new HashMap<>();
     private int zookeeper_port = 8889;
-    private int defaultGroupSize = 5;
+    private int defaultGroupSize = 3;
     private BrokerLoad loads = new BrokerLoad();
 
     private void run() {
@@ -76,8 +76,8 @@ public class Zookeeper {
                         }
                     }
 
-                    if (reallocate)
-                        allocateServer("");
+                    //if (reallocate)
+                        //allocateServer("");
                 }
 
                 try {
@@ -90,100 +90,100 @@ public class Zookeeper {
         }
     }
 
-    private void allocateServer(String brokerAddr) {
-
-        if (brokerAddr.equals("")) {
-            if (serverSet.size() < defaultGroupSize) return;
-            Set<String> topics = getTopicSet();
-            for (String topic : topics) {
-                int size = TopicToSever.get(topic).size();
-                if (size != 0 && size < defaultGroupSize) {
-
-                    String leaderAddr = leaderMap.get(topic);
-                    int i = leaderAddr.indexOf(":");
-                    String ip = leaderAddr.substring(0, i);
-                    int port = Integer.parseInt(leaderAddr.substring(i + 1));
-
-                    JSONObject msg = new JSONObject();
-                    msg.put("action", "ADD_NEW_BROKER");
-                    JSONObject content = new JSONObject();
-                    content.put("topic", topic);
-
-                    //get an array of brokers with load ascending
-                    List<String> brokerGroup = loads.chooseKey(defaultGroupSize);
-                    int idx = 0;
-                    int num = defaultGroupSize - size;
-                    while (num > 0) {
-                        String broker = brokerGroup.get(idx);
-                        //if broker not in topic server set, add it
-                        if (!TopicToSever.get(topic).contains(broker)) {
-                            if (content.containsKey("broker")) content.replace("broker", broker);
-                            else content.put("broker", broker);
-
-                            if (msg.containsKey("content")) msg.replace("content", content);
-                            else msg.put("content", content);
-
-                            try {
-                                Socket client = new Socket(ip, port);
-                                PrintStream writer = new PrintStream(client.getOutputStream());
-                                writer.println(msg.toString());
-
-                                loads.inc(broker);
-                                TopicToSever.get(topic).add(broker);
-                                serverTopicSet.get(broker).add(topic);
-                                num--;
-                            } catch (Exception e) {
-                                System.out.println("error in load balancing");
-                                System.out.println(e.getMessage());
-                            }
-                        }
-                        idx++;
-                    }
-                }
-            }
-        } else {
-            //find a topic with least number of brokers
-            String topic = null;
-            int num = Integer.MAX_VALUE;
-            Set<String> topics = getTopicSet();
-            for (String t : topics) {
-                int size = TopicToSever.get(topic).size();
-                if (size != 0 && size < num) {
-                    num = size;
-                    topic = t;
-                }
-            }
-
-            //add broker to the topic
-            if (num < defaultGroupSize) {
-                String leaderAddr = leaderMap.get(topic);
-
-                int i = leaderAddr.indexOf(":");
-                String ip = leaderAddr.substring(0, i);
-                int port = Integer.parseInt(leaderAddr.substring(i + 1));
-
-                JSONObject msg = new JSONObject();
-                msg.put("action", "ADD_BROKER");
-                JSONObject content = new JSONObject();
-                content.put("topic", topic);
-                content.put("broker", brokerAddr);
-                msg.put("content", content);
-
-                try {
-                    Socket client = new Socket(ip, port);
-                    PrintStream writer = new PrintStream(client.getOutputStream());
-                    writer.println(msg.toString());
-                    loads.inc(brokerAddr);
-                    TopicToSever.get(topic).add(brokerAddr);
-                    serverTopicSet.put(brokerAddr, new HashSet<>());
-                    serverTopicSet.get(brokerAddr).add(topic);
-                } catch (Exception e) {
-                    System.out.println("error in add broker to topic");
-                    System.out.println(e.getMessage());
-                }
-            }
-        }
-    }
+//    private void allocateServer(String brokerAddr) {
+//
+//        if (brokerAddr.equals("")) {
+//            if (serverSet.size() < defaultGroupSize) return;
+//            Set<String> topics = getTopicSet();
+//            for (String topic : topics) {
+//                int size = TopicToSever.get(topic).size();
+//                if (size != 0 && size < defaultGroupSize) {
+//
+//                    String leaderAddr = leaderMap.get(topic);
+//                    int i = leaderAddr.indexOf(":");
+//                    String ip = leaderAddr.substring(0, i);
+//                    int port = Integer.parseInt(leaderAddr.substring(i + 1));
+//
+//                    JsonObject msg = new JsonObject();
+//                    msg.addProperty("action", "ADD_NEW_BROKER");
+//                    JsonObject content = new JsonObject();
+//                    content.addProperty("topic", topic);
+//                    msg.add("content", content);
+//                    //get an array of brokers with load ascending
+//                    List<String> brokerGroup = loads.chooseKey(defaultGroupSize);
+//                    int idx = 0;
+//                    int num = defaultGroupSize - size;
+//                    while (num > 0) {
+//                        String broker = brokerGroup.get(idx);
+//                        //if broker not in topic server set, add it
+//                        if (!TopicToSever.get(topic).contains(broker)) {
+//                            if (content.has("broker")) content.addProperty("broker", broker);
+//                            else content.addProperty("broker", broker);
+//
+//                            if (msg.containsKey("content")) msg.replace("content", content);
+//                            else msg.put("content", content);
+//
+//                            try {
+//                                Socket client = new Socket(ip, port);
+//                                PrintStream writer = new PrintStream(client.getOutputStream());
+//                                writer.println(msg.toString());
+//
+//                                loads.inc(broker);
+//                                TopicToSever.get(topic).add(broker);
+//                                serverTopicSet.get(broker).add(topic);
+//                                num--;
+//                            } catch (Exception e) {
+//                                System.out.println("error in load balancing");
+//                                System.out.println(e.getMessage());
+//                            }
+//                        }
+//                        idx++;
+//                    }
+//                }
+//            }
+//        } else {
+//            //find a topic with least number of brokers
+//            String topic = null;
+//            int num = Integer.MAX_VALUE;
+//            Set<String> topics = getTopicSet();
+//            for (String t : topics) {
+//                int size = TopicToSever.get(topic).size();
+//                if (size != 0 && size < num) {
+//                    num = size;
+//                    topic = t;
+//                }
+//            }
+//
+//            //add broker to the topic
+//            if (num < defaultGroupSize) {
+//                String leaderAddr = leaderMap.get(topic);
+//
+//                int i = leaderAddr.indexOf(":");
+//                String ip = leaderAddr.substring(0, i);
+//                int port = Integer.parseInt(leaderAddr.substring(i + 1));
+//
+//                JSONObject msg = new JSONObject();
+//                msg.put("action", "ADD_BROKER");
+//                JSONObject content = new JSONObject();
+//                content.put("topic", topic);
+//                content.put("broker", brokerAddr);
+//                msg.put("content", content);
+//
+//                try {
+//                    Socket client = new Socket(ip, port);
+//                    PrintStream writer = new PrintStream(client.getOutputStream());
+//                    writer.println(msg.toString());
+//                    loads.inc(brokerAddr);
+//                    TopicToSever.get(topic).add(brokerAddr);
+//                    serverTopicSet.put(brokerAddr, new HashSet<>());
+//                    serverTopicSet.get(brokerAddr).add(topic);
+//                } catch (Exception e) {
+//                    System.out.println("error in add broker to topic");
+//                    System.out.println(e.getMessage());
+//                }
+//            }
+//        }
+//    }
 
     //private void getServerCount() {
 
@@ -249,10 +249,10 @@ public class Zookeeper {
             String ip = leaderAddr.substring(0, i);
             int port = Integer.parseInt(leaderAddr.substring(i + 1));
 
-            JSONObject msg = new JSONObject();
-            msg.put("action", "BUILD_SPANNING_TREE");
-            JSONObject content = new JSONObject();
-            content.put("topic", topic);
+            JsonObject msg = new JsonObject();
+            msg.addProperty("action", "BUILD_SPANNING_TREE");
+            JsonObject content = new JsonObject();
+            content.addProperty("topic", topic);
 
             Set<String> brokers = TopicToSever.get(topic);
             StringBuilder brokerList = new StringBuilder();
@@ -260,8 +260,8 @@ public class Zookeeper {
                 brokerList.append(broker + ",");
             }
 
-            content.put("brokers", brokerList.toString());
-            msg.put("content", content);
+            content.addProperty("brokers", brokerList.toString());
+            msg.add("content", content);
 
             try {
                 Socket client = new Socket(ip, port);
@@ -295,8 +295,8 @@ public class Zookeeper {
         try {
             Socket client = new Socket(ip, port);
 
-            JSONObject msg = new JSONObject();
-            msg.put("action", "CHECK_ALIVE");
+            JsonObject msg = new JsonObject();
+            msg.addProperty("action", "CHECK_ALIVE");
 
             PrintStream writer = new PrintStream(client.getOutputStream());
             writer.println(msg.toString());
@@ -345,12 +345,12 @@ public class Zookeeper {
                     loads.inc(brokerAddr);
                 } else {
                     String leaderAddr = leaderMap.get(topic);
-                    JSONObject msg = new JSONObject();
-                    msg.put("action", "ADD_NEW_BROKER");
-                    JSONObject content = new JSONObject();
-                    content.put("topic", topic);
-                    content.put("broker", brokerAddr);
-                    msg.put("content", content);
+                    JsonObject msg = new JsonObject();
+                    msg.addProperty("action", "ADD_NEW_BROKER");
+                    JsonObject content = new JsonObject();
+                    content.addProperty("topic", topic);
+                    content.addProperty("broker", brokerAddr);
+                    msg.add("content", content);
 
                     int i = leaderAddr.indexOf(":");
                     String ip = leaderAddr.substring(0, i);
@@ -381,12 +381,12 @@ public class Zookeeper {
             }
             String leaderAddr = leaderMap.get(topic);
             if (leaderAddr != null) {
-                JSONObject msg = new JSONObject();
-                msg.put("action", "SERVER_FAIL");
-                JSONObject content = new JSONObject();
-                content.put("topic", topic);
-                content.put("broker", brokerAddr);
-                msg.put("content", content);
+                JsonObject msg = new JsonObject();
+                msg.addProperty("action", "SERVER_FAIL");
+                JsonObject content = new JsonObject();
+                content.addProperty("topic", topic);
+                content.addProperty("broker", brokerAddr);
+                msg.add("content", content);
 
                 int i = leaderAddr.indexOf(":");
                 String ip = leaderAddr.substring(0, i);
@@ -411,12 +411,12 @@ public class Zookeeper {
         String leaderAddr = leaderMap.get(topic);
 
         if (leaderAddr != null) {
-            JSONObject msg = new JSONObject();
-            msg.put("action", MessageAction.ALLOCATE_CLIENT);
-            JSONObject content = new JSONObject();
-            content.put("topic", topic);
-            content.put("client", clientAddr);
-            msg.put("content", content);
+            JsonObject msg = new JsonObject();
+            msg.addProperty("action", MessageAction.ALLOCATE_CLIENT);
+            JsonObject content = new JsonObject();
+            content.addProperty("topic", topic);
+            content.addProperty("client", clientAddr);
+            msg.add("content", content);
 
             int i = leaderAddr.indexOf(":");
             String ip = leaderAddr.substring(0, i);
@@ -441,12 +441,12 @@ public class Zookeeper {
         String leaderAddr = leaderMap.get(topic);
 
         if (leaderAddr != null) {
-            JSONObject msg = new JSONObject();
-            msg.put("action", "DEL_CLIENT");
-            JSONObject content = new JSONObject();
-            content.put("topic", topic);
-            content.put("client", clientAddr);
-            msg.put("content", content);
+            JsonObject msg = new JsonObject();
+            msg.addProperty("action", "DEL_CLIENT");
+            JsonObject content = new JsonObject();
+            content.addProperty("topic", topic);
+            content.addProperty("client", clientAddr);
+            msg.add("content", content);
 
             int i = leaderAddr.indexOf(":");
             String ip = leaderAddr.substring(0, i);
@@ -486,39 +486,38 @@ public class Zookeeper {
         public void run() {
 
             try {
-                JSONObject sent = new JSONObject();
+                JsonObject sent = new JsonObject();
 
                 String inputLine = reader.readLine();
-                JSONParser parser = new JSONParser();
-                JSONObject json = (JSONObject) parser.parse(inputLine);
-                String action = (String) json.get("action");
+                JsonParser parser = new JsonParser();
+                JsonObject json = parser.parse(inputLine).getAsJsonObject();
+                String action = json.get("action").getAsString();
 
                 System.out.println("Action: " + action);
                 //for "NEW_TOPIC", return topic leader info to publisher
                 if (action.equals("NEW_TOPIC")) {
                     //content is topic
-                    String topic = (String) json.get("content");
+                    String topic = json.get("content").getAsString();
 
                     String leaderAddr = getLeaderInfo(topic);
                     System.out.println("leader address : " + leaderAddr);
-                    sent.put("action", "NEW_TOPIC");
-                    sent.put("content", leaderAddr);
+                    sent.addProperty("action", "NEW_TOPIC");
+                    sent.addProperty("content", leaderAddr);
                     writer.println(sent.toString());
                 } else if (action.equals("CLIENT_REGISTER")) {
-                    JSONObject content = (JSONObject) json.get("content");
-                    String sender = (String) json.get("sender");
-                    String topic = (String) content.get("topic");
+                    JsonObject content = json.get("content").getAsJsonObject();
+                    String sender = json.get("sender").getAsString();
+                    String topics = content.get("topic").getAsString();
+                    String[] topicList = topics.split(",");
 
-                    sent.put("action", "CLIENT_REGISTER");
-                    if (addClient(topic, sender)) {
-                        sent.put("content", "success");
-                    } else {
-                        sent.put("content", "fail");
+                    for(String topic: topicList) {
+                        addClient(topic, sender);
+                        Thread.sleep(1000);
                     }
-                    writer.println(sent.toString());
+
                 } else if (action.equals("BROKER_REG")) {
-                    String brokerAddr = (String) json.get("sender");
-                    String content = (String) json.get("content");
+                    String brokerAddr = json.get("sender").getAsString();
+                    String content = json.get("content").getAsString();
                     addServer(content, brokerAddr);
                 } else if (action.equals("GET_TOPIC")) {
                     Set<String> topicSet = getTopicSet();
@@ -526,21 +525,18 @@ public class Zookeeper {
                     for (String topic : topicSet) {
                         topics.append(topic + ",");
                     }
-                    sent.put("action", "TOPICS");
-                    sent.put("content", topics.toString());
+                    sent.addProperty("action", "TOPICS");
+                    sent.addProperty("content", topics.toString());
                     writer.println(sent.toString());
                 } else if (action.equals("SERVER_FAIL")) {
-                    String content = (String) json.get("content");
+                    String content = json.get("content").getAsString();
                     String[] brokers = content.split(",");
                     for (String broker : brokers)
                         delServer(broker);
-                } else if(action.equals("DELETE_CLIENT")){
-                    String topic = (String) json.get("content");
-                    String sender = (String) json.get("sender");
-                    delClient(topic, sender);
-                } else{
-                System.out.println("action not supported");
+                } else {
+                    System.out.println("action not supported");
                 }
+
 
                 reader.close();
                 writer.close();

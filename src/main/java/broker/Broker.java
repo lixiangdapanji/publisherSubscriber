@@ -1,9 +1,9 @@
 package broker;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import message.MessageAction;
 
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 import util.JsonUtil;
 
 import java.io.*;
@@ -12,6 +12,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,7 +21,7 @@ public class Broker {
 
     private String ip = "127.0.0.1";
     private int port;
-    private JSONParser parser;
+    private JsonParser parser;
     private String id;
     //private AllOne allOne;
     private String zookeeperIp;
@@ -57,7 +58,7 @@ public class Broker {
         topicServerMap = new HashMap<>();
         routingMap = new HashMap<>();
         //msgCount = new AtomicInteger(0);
-        parser = new JSONParser();
+        parser = new JsonParser();
         //allOne = new AllOne();
         serverLoad = new HashMap<>();
         topicMsgMap = new HashMap<>();
@@ -85,19 +86,19 @@ public class Broker {
      *                        content:{topic:topic,
      *                        message: message}}
      */
-    private void newFeed(JSONObject message) {
+    private void newFeed(JsonObject message) {
         System.out.println("newFeed is called.");
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String messagecontent = (String) message.get("msg");
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String messagecontent = content.get("msg").getAsString();
 
         int num = topicCount.get(topic).incrementAndGet();
-        content.put("id", num + "");
+        content.addProperty("id", num + "");
         //content.put("message", messagecontent);
-        JSONObject object = new JSONObject();
-        object.put("sender", id);
-        object.put("action", MessageAction.SEND_MESSAGE);
-        object.put("content", content);
+        JsonObject object = new JsonObject();
+        object.addProperty("sender", id);
+        object.addProperty("action", MessageAction.SEND_MESSAGE);
+        object.add("content", content);
 
         sendMsg(object);
         //routingServer(topic, object);
@@ -113,13 +114,13 @@ public class Broker {
      *                server: ip:port,
      *                client: ip:port}}
      */
-    private void addClient(JSONObject message) {
+    private void addClient(JsonObject message) {
         System.out.println("addclient is called.");
         try {
-            JSONObject content = (JSONObject) message.get("content");
-            String serverId = (String) content.get("server");
-            String clientId = (String) content.get("client");
-            String topic = (String) content.get("topic");
+            JsonObject content = (JsonObject) message.get("content");
+            String serverId = content.get("server").getAsString();
+            String clientId = content.get("client").getAsString();
+            String topic = content.get("topic").getAsString();
             String key = serverId + ":" + topic;
             if (!serverClientMap.containsKey(key)) {
                 serverClientMap.put(key, new HashSet<>());
@@ -143,13 +144,13 @@ public class Broker {
      *                        client: ip:port}}
      * @return count of changes. -1:exception.
      */
-    private int delClient(JSONObject message) {
+    private int delClient(JsonObject message) {
         System.out.println("delClient is called.");
         try {
             //int count = 0;
-            JSONObject content = (JSONObject) message.get("content");
-            String topic = (String) content.get("topic");
-            String clientId = (String) content.get("client");
+            JsonObject content =  message.get("content").getAsJsonObject();
+            String topic = content.get("topic").getAsString();
+            String clientId = content.get("client").getAsString();
             Set<String> serverSet = topicServerMap.get(topic);
             for (String serverId : serverSet) {
                 String key = serverId + ":" + topic;
@@ -173,12 +174,12 @@ public class Broker {
      *                content:{topic: topic 1,
      *                client: clientId}}
      */
-    private void allocateClient(JSONObject message) {
+    private void allocateClient(JsonObject message) {
         System.out.println("allocateClient is called.");
         try {
-            JSONObject content = (JSONObject) message.get("content");
-            String topic = (String) content.get("topic");
-            String clientId = (String) content.get("client");
+            JsonObject content = message.get("content").getAsJsonObject();
+            String topic = content.get("topic").getAsString();
+            String clientId = content.get("client").getAsString();
             String minLoad = "";
             int min = Integer.MAX_VALUE;
             System.out.println("allocate clients in " + topicServerMap.get(topic).size() + " servers");
@@ -195,14 +196,14 @@ public class Broker {
             }
 
 
-            JSONObject addClient = new JSONObject();
-            addClient.put("sender", id);
-            addClient.put("action", "ADD_CLIENT");
-            JSONObject sendContent = new JSONObject();
-            sendContent.put("topic", topic);
-            sendContent.put("server", minLoad);
-            sendContent.put("client", clientId);
-            addClient.put("content", sendContent);
+            JsonObject addClient = new JsonObject();
+            addClient.addProperty("sender", id);
+            addClient.addProperty("action", "ADD_CLIENT");
+            JsonObject sendContent = new JsonObject();
+            sendContent.addProperty("topic", topic);
+            sendContent.addProperty("server", minLoad);
+            sendContent.addProperty("client", clientId);
+            addClient.add("content", sendContent);
             System.out.println("Add client : " + addClient.toString());
             addClient(addClient);
 
@@ -220,11 +221,11 @@ public class Broker {
      *                        content:{topic: topic,
      *                        brokers: "server1, server2"}
      */
-    private void buildSpanningTree(JSONObject message) {
+    private void buildSpanningTree(JsonObject message) {
         System.out.println("buildSpanningTree is called.");
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String failed = (String) content.get("failed");
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String failed = !content.has("failed") ? "" : content.get("failed").getAsString();
 
         leaderMap.put(topic, id);
         topicServerMap.put(topic, new HashSet<>());
@@ -233,7 +234,7 @@ public class Broker {
             topicCount.put(topic, new AtomicInteger(0));
         }
 
-        String brokers = (String) content.get("brokers");
+        String brokers = content.get("brokers").getAsString();
         String[] brokerlist = brokers.split(",");
 
         for (String broker : brokerlist) {
@@ -286,16 +287,16 @@ public class Broker {
 
         for (Map.Entry<String, String> entry : routing.entrySet()) {
             String key = entry.getKey();
-            JSONObject object = new JSONObject();
-            object.put("sender", id);
-            object.put("action", MessageAction.REBUILD_EDGES);
-            JSONObject sendContent = new JSONObject();
-            sendContent.put("topic", topic);
-            sendContent.put("brokers", entry.getValue());
-            sendContent.put("allbrokers", brokers);
-            sendContent.put("leader", id);
-            sendContent.put("failed", failed);
-            object.put("content", sendContent);
+            JsonObject object = new JsonObject();
+            object.addProperty("sender", id);
+            object.addProperty("action", MessageAction.REBUILD_EDGES);
+            JsonObject sendContent = new JsonObject();
+            sendContent.addProperty("topic", topic);
+            sendContent.addProperty("brokers", entry.getValue());
+            sendContent.addProperty("allbrokers", brokers);
+            sendContent.addProperty("leader", id);
+            sendContent.addProperty("failed", failed);
+            object.add("content", sendContent);
 
             System.out.println("rebuild edge: " + key);
             if (key.equals(id)) {
@@ -306,7 +307,7 @@ public class Broker {
                 try {
                     Socket socket = new Socket(ip, port);
                     PrintStream printStream = new PrintStream(socket.getOutputStream());
-                    printStream.println(object.toJSONString());
+                    printStream.println(object.toString());
                     //printStream.close();
                     //socket.close();
                 } catch (Exception e) {
@@ -337,14 +338,14 @@ public class Broker {
     private void sendEdge(String topic, String server1, String server2) {
         System.out.println("sendEdge is called.");
 
-        JSONObject message = new JSONObject();
-        message.put("sender", id);
-        message.put("action", MessageAction.ADD_EDGE);
-        JSONObject content = new JSONObject();
-        content.put("topic", topic);
-        content.put("server", server2);
+        JsonObject message = new JsonObject();
+        message.addProperty("sender", id);
+        message.addProperty("action", MessageAction.ADD_EDGE);
+        JsonObject content = new JsonObject();
+        content.addProperty("topic", topic);
+        content.addProperty("server", server2);
         //content.put("leader", leaderMap.get(topic));
-        message.put("content", content);
+        message.add("content", content);
         if (server1.equals(id)) {
             addEdge(message);
             return;
@@ -357,7 +358,7 @@ public class Broker {
             //socket.setSoTimeout(1000);
 
             PrintStream printStream = new PrintStream(socket.getOutputStream());
-            printStream.println(message.toJSONString());
+            printStream.println(message.toString());
             //printStream.flush();
             //printStream.close();
             //socket.close();
@@ -373,9 +374,9 @@ public class Broker {
      *                action:____,
      *                content:____}
      */
-    private void routingServer(String topic, JSONObject message) {
+    private void routingServer(String topic, JsonObject message) {
         System.out.println(topic + ": routingServer is called.");
-        System.out.println(message.toJSONString());
+        System.out.println(message.toString());
         if (!routingMap.containsKey(topic)) {
             System.out.println("No server to routing");
             return;
@@ -383,8 +384,8 @@ public class Broker {
         Set<String> serverSet = routingMap.get(topic);
         if (serverSet == null) return;
         Socket socket;
-        String sender = (String) message.get("sender");
-        message.put("sender", id);
+        String sender = message.get("sender").getAsString();
+        message.addProperty("sender", id);
         List<String> failed = new ArrayList<>();
         for (String serverID : serverSet) {
             if (serverID.equals(sender)) {
@@ -398,7 +399,7 @@ public class Broker {
                 //socket.setSoTimeout(1000);
 
                 PrintStream printStream = new PrintStream(socket.getOutputStream());
-                printStream.println(message.toJSONString());
+                printStream.println(message.toString());
                 printStream.flush();
                 //printStream.close();
                 //socket.close();
@@ -416,19 +417,19 @@ public class Broker {
      * @param faileds
      */
     private void sendBrokerDown(List<String> faileds) {
-        JSONObject object = new JSONObject();
-        object.put("sender", id);
-        object.put("action", MessageAction.SERVER_FAIL);
+        JsonObject object = new JsonObject();
+        object.addProperty("sender", id);
+        object.addProperty("action", MessageAction.SERVER_FAIL);
         StringBuilder sb = new StringBuilder();
         for (String failed : faileds) {
             sb.append(failed + ",");
         }
-        object.put("content", sb.toString());
+        object.addProperty("content", sb.toString());
         try {
             Socket socket = new Socket(zookeeperIp, zookeeperPort);
             //socket.setSoTimeout(1000);
             PrintStream printStream = new PrintStream(socket.getOutputStream());
-            printStream.println(object.toJSONString());
+            printStream.println(object.toString());
             //printStream.close();
             //socket.close();
         } catch (Exception e) {
@@ -441,12 +442,12 @@ public class Broker {
      *
      * @param message
      */
-    private void addEdge(JSONObject message) {
+    private void addEdge(JsonObject message) {
         System.out.println("addEdge is called.");
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String serverId = (String) content.get("server");
-        String leader = (String) message.get("sender");
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String serverId = content.get("server").getAsString();
+        String leader = message.get("sender").getAsString();
 
         leaderMap.put(topic, leader);
 //        if (!topicCount.containsKey(topic)) {
@@ -474,10 +475,10 @@ public class Broker {
      *                        content: {topic: topic,
      *                        broker: server}
      */
-    private void addToSpanningTree(JSONObject message) {
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String serverID = (String) content.get("broker");
+    private void addToSpanningTree(JsonObject message) {
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String serverID = content.get("broker").getAsString();
 
         Set<String> serverSet = topicServerMap.get(topic);
         System.out.println("group size: " + serverSet.size());
@@ -511,13 +512,13 @@ public class Broker {
             e.printStackTrace();
         }
 
-        JSONObject addServerObject = new JSONObject();
-        addServerObject.put("sender", id);
-        addServerObject.put("action", MessageAction.ADD_SERVER);
-        JSONObject sendContent = new JSONObject();
-        sendContent.put("topic", topic);
-        sendContent.put("server", serverID);
-        addServerObject.put("content", sendContent);
+        JsonObject addServerObject = new JsonObject();
+        addServerObject.addProperty("sender", id);
+        addServerObject.addProperty("action", MessageAction.ADD_SERVER);
+        JsonObject sendContent = new JsonObject();
+        sendContent.addProperty("topic", topic);
+        sendContent.addProperty("server", serverID);
+        addServerObject.add("content", sendContent);
         routingServer(topic, addServerObject);
     }
 
@@ -527,7 +528,7 @@ public class Broker {
      *                        content:{topic: topic,
      *                        broker: serverID}}
      */
-    private void delFromSpanningTree(JSONObject message) {
+    private void delFromSpanningTree(JsonObject message) {
 
     }
 
@@ -537,43 +538,36 @@ public class Broker {
      * @param serverID
      */
     private void sendSynchronizeData(String serverID, String topic) {
-        JSONObject message = new JSONObject();
+        JsonObject message = new JsonObject();
 
         Map<String, Set<String>> clientMap = new HashMap<>();
         for (String key : serverClientMap.keySet()) {
             if (key.endsWith(topic))
                 clientMap.put(key, serverClientMap.get(key));
         }
-        if (!clientMap.isEmpty()) {
-            JSONObject serverClientObject = JsonUtil.mapToJson(clientMap);
-            message.put("server_client_map", serverClientObject);
-        } else {
-            message.put("server_client_map", "");
-        }
+        JsonObject serverClientObject = JsonUtil.mapToJson(clientMap);
+        message.add("server_client_map", serverClientObject);
 
         Map<String, Set<String>> brokerGroup = new HashMap<>();
         brokerGroup.put(topic, topicServerMap.get(topic));
-        JSONObject topicServerObject = JsonUtil.mapToJson(brokerGroup);
-        message.put("topic_server", topicServerObject);
+        JsonObject topicServerObject = JsonUtil.mapToJson(brokerGroup);
+        message.add("topic_server", topicServerObject);
 
         Map<String, Integer> load = new HashMap<>();
         for (String broker : serverLoad.keySet()) {
             if (topicServerMap.get(topic).contains(broker))
                 load.put(broker, serverLoad.get(broker));
         }
-        if (!load.isEmpty()) {
-            JSONObject serverLoadObject = JsonUtil.loadToJson(load);
-            message.put("server_load", serverLoadObject);
-        } else {
-            message.put("server_load", "");
-        }
+        JsonObject serverLoadObject = JsonUtil.loadToJson(load);
+        message.add("server_load", serverLoadObject);
 
-        //JSONObject serverClientObject = JsonUtil.mapToJson(serverClientMap);
-        //JSONObject topicServerObject = JsonUtil.mapToJson(topicServerMap);
-        //JSONObject serverLoadObject = JsonUtil.loadToJson(serverLoad);
-        //JSONObject message = new JSONObject();
-        message.put("sender", id);
-        message.put("action", MessageAction.SYNCHRONIZE);
+
+        //JsonObject serverClientObject = JsonUtil.mapToJson(serverClientMap);
+        //JsonObject topicServerObject = JsonUtil.mapToJson(topicServerMap);
+        //JsonObject serverLoadObject = JsonUtil.loadToJson(serverLoad);
+        //JsonObject message = new JsonObject();
+        message.addProperty("sender", id);
+        message.addProperty("action", MessageAction.SYNCHRONIZE);
         //message.put("server_client_map", serverClientObject);
         //message.put("topic_server", topicServerObject);
         //message.put("server_load", serverLoadObject);
@@ -584,7 +578,7 @@ public class Broker {
 
             Socket socket = new Socket(ip, port);
             PrintStream printStream = new PrintStream(socket.getOutputStream());
-            printStream.println(message.toJSONString());
+            printStream.println(message.toString());
             printStream.flush();
             //printStream.close();
             //socket.close();
@@ -599,18 +593,14 @@ public class Broker {
      *
      * @param message
      */
-    private void synchronizedData(JSONObject message) {
-        if (!((String) message.get("server_client_map")).equals("")) {
-            JSONObject serverClientObject = (JSONObject) message.get("server_client_map");
-            serverClientMap = JsonUtil.jsonToMap(serverClientObject);
-        }
-        if (!((String) message.get("server_load")).equals("")) {
-            JSONObject serverLoadObject = (JSONObject) message.get("server_load");
-            serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
-        }
-//        JSONObject serverClientObject = (JSONObject) message.get("server_client_map");
-        JSONObject topicServerObject = (JSONObject) message.get("topic_server");
-//        JSONObject serverLoadObject = (JSONObject) message.get("server_load");
+    private void synchronizedData(JsonObject message) {
+        JsonObject serverClientObject = (JsonObject) message.get("server_client_map");
+        serverClientMap = JsonUtil.jsonToMap(serverClientObject);
+        JsonObject serverLoadObject = (JsonObject) message.get("server_load");
+        serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
+//        JsonObject serverClientObject = (JsonObject) message.get("server_client_map");
+        JsonObject topicServerObject = (JsonObject) message.get("topic_server");
+//        JsonObject serverLoadObject = (JsonObject) message.get("server_load");
 //        serverClientMap = JsonUtil.jsonToMap(serverClientObject);
         topicServerMap = JsonUtil.jsonToMap(topicServerObject);
 //        serverLoad = JsonUtil.jsonToLoadMap(serverLoadObject);
@@ -628,10 +618,10 @@ public class Broker {
      *                        content: {topic: topic_name,
      *                        server: serverId}}
      */
-    private void addServer(JSONObject message) {
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String serverId = (String) content.get("serverId");
+    private void addServer(JsonObject message) {
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String serverId = content.get("server").getAsString();
 
         if (!topicServerMap.containsKey(topic)) {
             topicServerMap.put(topic, new HashSet<>());
@@ -645,11 +635,11 @@ public class Broker {
      *
      * @param message
      */
-    private void sendMsg(JSONObject message) {
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String sender = (String) message.get("sender");
-        int num = Integer.valueOf((String) content.get("id"));
+    private void sendMsg(JsonObject message) {
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String sender = message.get("sender").getAsString();
+        int num = Integer.valueOf(content.get("id").getAsString());
         System.out.println("message id:" + num);
 
         if (!topicCount.containsKey(topic)) {
@@ -663,7 +653,7 @@ public class Broker {
         Set<String> clientSet = serverClientMap.get(key);
 
         routingServer(topic, message);
-        message.put("sender", id);
+        message.addProperty("sender", id);
 
         if (topicMsgMap.get(topic) == null) {
             topicMsgMap.put(topic, new ArrayList<>());
@@ -687,7 +677,7 @@ public class Broker {
                     socket.setSoTimeout(1000);
 
                     PrintStream printStream = new PrintStream(socket.getOutputStream());
-                    printStream.println(message.toJSONString());
+                    printStream.println(message.toString());
                     printStream.flush();
                     //printStream.close();
                     //socket.close();
@@ -700,7 +690,7 @@ public class Broker {
         if (!sender.equals(id) && curCount != num - 1)
             System.out.println("missing msg topic: " + topic + " from " + (curCount + 1) + " to " + (num - 1));
 //       {
-//            JSONObject request = new JSONObject();
+//            JsonObject request = new JsonObject();
 //            request.put("sender", subscriberAddr + ":" + subscriberPort);
 //            request.put("action", "MISSING_MESSAGE");
 //            request.put("content",  wrongId + ":" + (id - 1) );
@@ -729,10 +719,10 @@ public class Broker {
      *
      * @param message
      */
-    private void deleteServer(JSONObject message) {
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String serverId = (String) content.get("broker");
+    private void deleteServer(JsonObject message) {
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String serverId = content.get("broker").getAsString();
         if (topicServerMap.containsKey(topic)) {
             topicServerMap.get(topic).remove(serverId);
         }
@@ -757,15 +747,15 @@ public class Broker {
 //        for(String topic : topics){
 //            sb.append(topic + ",");
 //        }
-        JSONObject object = new JSONObject();
-        object.put("sender", id);
-        object.put("action", MessageAction.BROKER_REG);
-        object.put("content", topics);
+        JsonObject object = new JsonObject();
+        object.addProperty("sender", id);
+        object.addProperty("action", MessageAction.BROKER_REG);
+        object.addProperty("content", topics);
         //boolean success = false;
         try {
             Socket socket = new Socket(ip, port);
             PrintStream printStream = new PrintStream(socket.getOutputStream());
-            printStream.println(object.toJSONString());
+            printStream.println(object.toString());
             printStream.flush();
             //printStream.close();
 //            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -774,7 +764,7 @@ public class Broker {
 //            while((line = bufferedReader.readLine()) != null){
 //                sb.append(line);
 //            }
-//            JSONObject message = (JSONObject)parser.parse(sb.toString());
+//            JsonObject message = (JsonObject)parser.parse(sb.toString());
 //            String action = (String)message.get("action");
 //            if(action.equals(MessageAction.OK)){
 //                success = true;
@@ -795,14 +785,14 @@ public class Broker {
     }
 
 
-    private void brokerFailed(JSONObject message) {
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String broker = (String) content.get("broker");
+    private void brokerFailed(JsonObject message) {
+        JsonObject content = (JsonObject) message.get("content");
+        String topic = content.get("topic").getAsString();
+        String broker = content.get("broker").getAsString();
 
         String key = broker + ":" + topic;
         Set<String> clients = serverClientMap.get(key);
-//        JSONObject delServerObject = new JSONObject();
+//        JsonObject delServerObject = new JsonObject();
 //        delServerObject.put("sender", id);
 //        delServerObject.put("action", MessageAction.DEL_SERVER);
 //        delServerObject.put("content", content);
@@ -816,28 +806,28 @@ public class Broker {
         if (serverLoad.containsKey(broker))
             serverLoad.remove(broker);
 
-        JSONObject buildObject = new JSONObject();
-        buildObject.put("sender", id);
-        buildObject.put("action", MessageAction.BUILD_SPANNING_TREE);
-        JSONObject buildContent = new JSONObject();
+        JsonObject buildObject = new JsonObject();
+        buildObject.addProperty("sender", id);
+        buildObject.addProperty("action", MessageAction.BUILD_SPANNING_TREE);
+        JsonObject buildContent = new JsonObject();
         Set<String> servers = topicServerMap.get(topic);
-        buildContent.put("topic", topic);
+        buildContent.addProperty("topic", topic);
         StringBuilder sb = new StringBuilder();
         for (String server : servers) {
             sb.append(server + ",");
         }
-        buildContent.put("brokers", sb.toString());
-        buildContent.put("failed", broker);
-        buildObject.put("content", buildContent);
+        buildContent.addProperty("brokers", sb.toString());
+        buildContent.addProperty("failed", broker);
+        buildObject.add("content", buildContent);
         buildSpanningTree(buildObject);
 
         if (clients != null) {
             for (String client : clients) {
-                JSONObject alloMsg = new JSONObject();
-                JSONObject alloMsgContent = new JSONObject();
-                alloMsgContent.put("topic", topic);
-                alloMsgContent.put("client", client);
-                alloMsg.put("content", alloMsgContent);
+                JsonObject alloMsg = new JsonObject();
+                JsonObject alloMsgContent = new JsonObject();
+                alloMsgContent.addProperty("topic", topic);
+                alloMsgContent.addProperty("client", client);
+                alloMsg.add("content", alloMsgContent);
                 allocateClient(alloMsg);
             }
         }
@@ -861,12 +851,12 @@ public class Broker {
             }
             sb.deleteCharAt(sb.length() - 1);
 
-            JSONObject object = new JSONObject();
-            object.put("sender", id);
-            object.put("action", MessageAction.REBUILD_EDGES);
-            JSONObject content = new JSONObject();
-            content.put("topic", topic);
-            content.put("brokers", sb.toString());
+            JsonObject object = new JsonObject();
+            object.addProperty("sender", id);
+            object.addProperty("action", MessageAction.REBUILD_EDGES);
+            JsonObject content = new JsonObject();
+            content.addProperty("topic", topic);
+            content.addProperty("brokers", sb.toString());
 
 
             Set<String> allServers = graph.keySet();
@@ -875,8 +865,8 @@ public class Broker {
                 sb.append(server + ",");
             }
             sb.deleteCharAt(sb.length() - 1);
-            content.put("allbrokers", sb.toString());
-            object.put("content", content);
+            content.addProperty("allbrokers", sb.toString());
+            object.add("content", content);
             System.out.println("rebuild edge: " + key);
             if (key.equals(id)) {
                 rebuildEdges(object);
@@ -888,7 +878,7 @@ public class Broker {
             try {
                 Socket socket = new Socket(ip, port);
                 PrintStream printStream = new PrintStream(socket.getOutputStream());
-                printStream.println(object.toJSONString());
+                printStream.println(object.toString());
                 printStream.close();
                 socket.close();
             } catch (Exception e) {
@@ -897,10 +887,10 @@ public class Broker {
         }
     }
 
-    private void rebuildEdges(JSONObject message) {
-        JSONObject content = (JSONObject) message.get("content");
-        String topic = (String) content.get("topic");
-        String leader = (String) content.get("leader");
+    private void rebuildEdges(JsonObject message) {
+        JsonObject content = message.get("content").getAsJsonObject();
+        String topic = content.get("topic").getAsString();
+        String leader = content.get("leader").getAsString();
         leaderMap.put(topic, leader);
         if (!topicCount.containsKey(topic)) {
             topicCount.put(topic, new AtomicInteger(0));
@@ -908,7 +898,7 @@ public class Broker {
 
         routingMap.remove(topic);
         routingMap.put(topic, new HashSet<>());
-        String routing = (String) content.get("brokers");
+        String routing = content.get("brokers").getAsString();
         if (routing != null && !routing.equals("")) {
             String[] brokers = routing.split(",");
             for (String broker : brokers) {
@@ -918,7 +908,7 @@ public class Broker {
 
         topicServerMap.remove(topic);
         topicServerMap.put(topic, new HashSet<>());
-        String group = (String) content.get("allbrokers");
+        String group = content.get("allbrokers").getAsString();
         if (group != null && !group.equals("")) {
             String[] allBrokers = group.split(",");
             for (String broker : allBrokers) {
@@ -926,7 +916,7 @@ public class Broker {
             }
         }
 
-        String failed = (String) content.get("failed");
+        String failed = content.get("failed").getAsString();
         if (serverLoad.containsKey(failed))
             serverLoad.remove(failed);
         if (failed != null && !leader.equals(id)) {
@@ -947,7 +937,15 @@ public class Broker {
         public void run() {
             System.out.println("The message has reached 100 writing to file");
             try {
-                String path = "/Users/xiaopu/IdeaProjects/publisherSubscriber/src/main/resources/broker" + topic + serverId + "Message";
+                String path = System.getProperty("user.dir") + "/broker/" + topic + serverId + "Message";
+                File file = new File(path);
+                System.out.println(file.getParentFile());
+                if (!file.getParentFile().exists()) {
+                    file.getParentFile().mkdirs();
+//                    if (!result) {
+//                        System.out.println("创建失败");
+//                    }
+                }
                 FileWriter fileWriter = new FileWriter(path, true);
                 BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
                 PrintWriter out = new PrintWriter(bufferedWriter);
@@ -967,11 +965,11 @@ public class Broker {
     }
 
 
-//    private void missMsgHandler(JSONObject message) {
+//    private void missMsgHandler(JsonObject message) {
 //        System.out.println("Detect message missing");
 //        String clientInfo = (String)message.get("sender");
 //
-//        JSONObject content = (JSONObject) message.get("content");
+//        JsonObject content = (JsonObject) message.get("content");
 //        String[] msgRange = content.toString().split(":");
 //        int from = Integer.valueOf(msgRange[0]);
 //        int to = Integer.valueOf(msgRange[1]);
@@ -991,10 +989,10 @@ public class Broker {
 //        }
 //        System.out.println(sb.toString());
 //
-//        JSONObject object = new JSONObject();
-//        object.put("sender", clientInfo);
-//        object.put("action", MessageAction.SEND_MESSAGE);
-//        object.put("content", sb.toString());
+//        JsonObject object = new JsonObject();
+//        object.addProperty("sender", clientInfo);
+//        object.addProperty("action", MessageAction.SEND_MESSAGE);
+//        object.addProperty("content", sb.toString());
 //
 //        SendMissingMegThread sendMissingMegThread = new SendMissingMegThread(object, clientInfo);
 //        sendMissingMegThread.run();
@@ -1002,9 +1000,9 @@ public class Broker {
 //
 //    private class SendMissingMegThread extends Thread{
 //        private String clientInfo;
-//        private JSONObject message;
+//        private JsonObject message;
 //
-//        public SendMissingMegThread(JSONObject message, String clientInfo) {
+//        public SendMissingMegThread(JsonObject message, String clientInfo) {
 //            this.message = message;
 //            this.clientInfo = clientInfo;
 //        }
@@ -1024,11 +1022,11 @@ public class Broker {
 //        }
 //    }
 
-    private void missMsgHandler(JSONObject message) {
+    private void missMsgHandler(JsonObject message) {
         System.out.println("Detect message missing");
-        String clientInfo = (String) message.get("sender");
+        String clientInfo = message.get("sender").getAsString();
 
-        JSONObject content = (JSONObject) message.get("content");
+        JsonObject content = (JsonObject) message.get("content");
         String[] msgRange = content.toString().split(":");
         int from = Integer.valueOf(msgRange[0]);
         int to = Integer.valueOf(msgRange[1]);
@@ -1047,10 +1045,10 @@ public class Broker {
         }
         System.out.println(sb.toString());
 
-        JSONObject object = new JSONObject();
-        object.put("sender", clientInfo);
-        object.put("action", MessageAction.SEND_MESSAGE);
-        object.put("content", sb.toString());
+        JsonObject object = new JsonObject();
+        object.addProperty("sender", clientInfo);
+        object.addProperty("action", MessageAction.SEND_MESSAGE);
+        object.addProperty("content", sb.toString());
 
         SendMissingMegThread sendMissingMegThread = new SendMissingMegThread(object, clientInfo);
         sendMissingMegThread.run();
@@ -1058,9 +1056,9 @@ public class Broker {
 
     private class SendMissingMegThread extends Thread {
         private String clientInfo;
-        private JSONObject message;
+        private JsonObject message;
 
-        public SendMissingMegThread(JSONObject message, String clientInfo) {
+        public SendMissingMegThread(JsonObject message, String clientInfo) {
             this.message = message;
             this.clientInfo = clientInfo;
         }
@@ -1103,9 +1101,9 @@ public class Broker {
 //                    sb.append(inputLine);
 //                }
                 //socket.close();
-                System.out.println(inputLine);
-                JSONObject object = (JSONObject) parser.parse(inputLine);
-                String action = (String) object.get("action");
+                //System.out.println(inputLine);
+                JsonObject object = parser.parse(inputLine).getAsJsonObject();
+                String action = object.get("action").getAsString();
                 System.out.println("Action: " + action);
                 switch (action) {
                     case MessageAction.ADD_CLIENT:

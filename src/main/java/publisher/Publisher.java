@@ -1,7 +1,7 @@
 package publisher;
 
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.io.*;
 import java.net.Socket;
@@ -18,7 +18,7 @@ public class Publisher extends Thread {
         //topicList.add("Topic_1");
     }
 
-    private JSONObject CreateMsg() {
+    private JsonObject CreateMsg() {
         /*
         message format { sender: publisher,
                          action: NEW_FEED
@@ -28,14 +28,14 @@ public class Publisher extends Thread {
          */
         int size = topicList.size();
 
-        JSONObject msg = new JSONObject();
-        msg.put("action", "NEW_FEED");
+        JsonObject msg = new JsonObject();
+        msg.addProperty("action", "NEW_FEED");
 
-        JSONObject content = new JSONObject();
-        content.put("topic", topicList.get((int) (Math.random() * size)));
-        content.put("msg", "a new message");
+        JsonObject content = new JsonObject();
+        content.addProperty("topic", topicList.get((int) (Math.random() * size)));
+        content.addProperty("msg", "a new message");
 
-        msg.put("content", content);
+        msg.add("content", content);
 
         return msg;
     }
@@ -46,9 +46,9 @@ public class Publisher extends Thread {
         String brokerAddr = null;
         PrintStream writer = null;
 
-        JSONObject sent = new JSONObject();
-        sent.put("action", "NEW_TOPIC");
-        sent.put("content", topic);
+        JsonObject sent = new JsonObject();
+        sent.addProperty("action", "NEW_TOPIC");
+        sent.addProperty("content", topic);
 
         try {
             client = new Socket(zookeeper_ip, zookeeper_port);
@@ -62,16 +62,16 @@ public class Publisher extends Thread {
             reader = new BufferedReader(new InputStreamReader(client.getInputStream()));
             String inputLine = reader.readLine();
 
-            JSONParser parser = new JSONParser();
-            JSONObject json = (JSONObject) parser.parse(inputLine);
-            brokerAddr = (String) json.get("content");
+            JsonParser parser = new JsonParser();
+            JsonObject json = parser.parse(inputLine).getAsJsonObject();
+            brokerAddr = json.get("content").getAsString();
 
             writer.close();
             reader.close();
             client.close();
         } catch (Exception e) {
             System.out.println("Exception in getServerAddr.");
-            e.printStackTrace();
+            //e.printStackTrace();
         } finally {
             if (client != null) {
                 try {
@@ -85,7 +85,7 @@ public class Publisher extends Thread {
         return brokerAddr;
     }
 
-    private void sendMsg(String brokerAddr, String topic, JSONObject msg) {
+    private void sendMsg(String brokerAddr, String topic, JsonObject msg) {
         Socket client = null;
         while (true) {
 
@@ -104,7 +104,19 @@ public class Publisher extends Thread {
                 break;
             } catch (Exception e) {
                 System.out.println("Exception in sendMsg.");
-                e.printStackTrace();
+                //e.printStackTrace();
+                JsonObject report = new JsonObject();
+                report.addProperty("action","SERVER_FAIL");
+                report.addProperty("content",brokerAddr);
+
+                try{
+                    Socket socket = new Socket(zookeeper_ip,zookeeper_port);
+                    PrintStream writer = new PrintStream(socket.getOutputStream());
+                    writer.println(report.toString());
+                }catch(Exception e1){
+                    System.out.println("cannot connect to zookeeper");
+                }
+
                 try {
                     Thread.sleep(5000);
                 } catch (Exception se) {
@@ -139,11 +151,11 @@ public class Publisher extends Thread {
                 e.printStackTrace();
             }
             //create message
-            JSONObject msg = CreateMsg();
+            JsonObject msg = CreateMsg();
 
             //parse msg topic
-            JSONObject content = (JSONObject) msg.get("content");
-            String topic = (String) content.get("topic");
+            JsonObject content = msg.get("content").getAsJsonObject();
+            String topic = content.get("topic").getAsString();
             System.out.println(topic);
 
             String brokerAddr = null;

@@ -1,7 +1,10 @@
 package util;
 
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -10,47 +13,47 @@ import java.util.Set;
 
 public class JsonUtil {
 
-    public static JSONObject mapToJson(Map<String, Set<String>> map){
-        JSONObject object = new JSONObject();
+    public static JsonObject mapToJson(Map<String, Set<String>> map){
+        JsonObject object = new JsonObject();
 
         for(Map.Entry<String, Set<String>> entry : map.entrySet()){
             String key = entry.getKey();
             Set<String> set = entry.getValue();
-            JSONArray array = new JSONArray();
+            JsonArray array = new JsonArray();
             for(String s : set){
                 array.add(s);
             }
-            object.put(key, array);
+            object.add(key, array);
         }
         return object;
     }
 
-    public static JSONObject loadToJson(Map<String, Integer> map){
-        JSONObject object = new JSONObject();
+    public static JsonObject loadToJson(Map<String, Integer> map){
+        JsonObject object = new JsonObject();
         for(Map.Entry<String, Integer> entry : map.entrySet()){
-            object.put(entry.getKey(), entry.getValue() + "");
+            object.addProperty(entry.getKey(), entry.getValue() + "");
         }
         return object;
     }
 
-    public static Map<String, Set<String>> jsonToMap(JSONObject object){
+    public static Map<String, Set<String>> jsonToMap(JsonObject object){
         Map<String, Set<String>> map = new HashMap<>();
-        Set<String> keySet = object.keySet();
-        for(String key : keySet){
+        for(Map.Entry<String, JsonElement> entry : object.entrySet()){
+            String key = entry.getKey();
+            JsonArray array = entry.getValue().getAsJsonArray();
             map.put(key, new HashSet<>());
-            JSONArray array = (JSONArray) object.get(key);
             for(int i = 0; i < array.size(); i++){
-                map.get(key).add((String)array.get(i));
+                map.get(key).add(array.get(i).getAsString());
             }
         }
         return map;
     }
 
-    public static Map<String, Integer> jsonToLoadMap(JSONObject object){
+    public static Map<String, Integer> jsonToLoadMap(JsonObject object){
         Map<String, Integer> map = new HashMap<>();
-        Set<String> keySet = object.keySet();
-        for(String key : keySet){
-            map.putIfAbsent(key, Integer.valueOf((String)object.get(key)));
+        for(Map.Entry<String, JsonElement> entry : object.entrySet()){
+            String key = entry.getKey();
+            map.putIfAbsent(key, Integer.valueOf(entry.getValue().getAsString()));
         }
         return map;
     }

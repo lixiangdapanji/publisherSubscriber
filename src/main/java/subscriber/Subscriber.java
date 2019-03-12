@@ -1,8 +1,8 @@
 package subscriber;
 
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
+
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -40,35 +40,33 @@ public class Subscriber {
     }
 
 
-    /**
-     *
-     */
-    public void registerTopic() {
+    public void registerTopic(String topic) {
 
-        List<String> keysAsArray = new ArrayList<>(topicMap.keySet());
-        Random r = new Random();
-        String topic = keysAsArray.get(r.nextInt(keysAsArray.size()));
+//        List<String> keysAsArray = new ArrayList<>(topicMap.keySet());
+//        Random r = new Random();
+//        String topic = keysAsArray.get(r.nextInt(keysAsArray.size()));
 
-        JSONObject obj = new JSONObject();
-        JSONObject topicObj = new JSONObject();
+        JsonObject obj = new JsonObject();
+        JsonObject topicObj = new JsonObject();
 
-        topicObj.put("topic", topic);
+        topicObj.addProperty("topic", topic);
 
-        obj.put("sender", subscriberAddr + ":" + subscriberPort);
-        obj.put("action", "CLIENT_REGISTER");
-        obj.put("content", topicObj);
+        obj.addProperty("sender", subscriberAddr + ":" + subscriberPort);
+        obj.addProperty("action", "CLIENT_REGISTER");
+        obj.add("content", topicObj);
 
         try {
             Socket socket = new Socket(zookeeperAddr, zookeeperPort);
             //send request
             PrintStream out = new PrintStream(socket.getOutputStream());
-            out.println(obj.toJSONString());
+            out.println(obj.toString());
             //socket.close();
 
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
 
     /**
      *
@@ -79,10 +77,10 @@ public class Subscriber {
         try {
             Socket socket = new Socket(zookeeperAddr, zookeeperPort);
             //send request
-            JSONObject request = new JSONObject();
-            request.put("sender", subscriberAddr + ":" + subscriberPort);
-            request.put("action", "GET_TOPIC");
-            request.put("content", new JSONObject());
+            JsonObject request = new JsonObject();
+            request.addProperty("sender", subscriberAddr + ":" + subscriberPort);
+            request.addProperty("action", "GET_TOPIC");
+            request.add("content", new JsonObject());
             PrintStream out = new PrintStream(socket.getOutputStream());
             out.println(request);
 
@@ -90,9 +88,9 @@ public class Subscriber {
             //InputStreamReader ins = new InputStreamReader(socket.getInputStream());
             BufferedReader ins = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             String in = ins.readLine();
-            JSONParser parser = new JSONParser();
-            JSONObject response = (JSONObject) parser.parse(in);
-            String content = (String) response.get("content");
+            JsonParser parser = new JsonParser();
+            JsonObject response = parser.parse(in).getAsJsonObject();
+            String content = response.get("content").getAsString();
             String[] topics = content.split(",");
             for (String s : topics) {
                 topicMap.put(s, new AtomicInteger(0));
@@ -100,9 +98,17 @@ public class Subscriber {
             socket.close();
         } catch (IOException e) {
             e.printStackTrace();
-        } catch (ParseException e) {
-            e.printStackTrace();
         }
+        StringBuilder sb = new StringBuilder();
+        System.out.print("Select the topic to subscribe: ");
+        sb.append("{");
+        for (String topic : topicMap.keySet()) {
+            sb.append(topic);
+            sb.append(", ");
+        }
+        sb.delete(sb.length() - 2, sb.length());
+        sb.append("}");
+        System.out.println(sb.toString());
     }
 
     /**
@@ -131,17 +137,17 @@ public class Subscriber {
             try {
                 BufferedReader ins = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String in = ins.readLine();
-                JSONParser parser = new JSONParser();
-                JSONObject jsonObject = (JSONObject) parser.parse(in);
-                String action = (String) jsonObject.get("action");
+                JsonParser parser = new JsonParser();
+                JsonObject jsonObject = parser.parse(in).getAsJsonObject();
+                String action = jsonObject.get("action").getAsString();
 
                 if (action.equals("SEND_MESSAGE")) {
-                    JSONObject content = (JSONObject) jsonObject.get("content");
-                    String sender = (String) jsonObject.get("sender");
+                    JsonObject content = jsonObject.get("content").getAsJsonObject();
+                    String sender = jsonObject.get("sender").getAsString();
                     String[] serverID = sender.split(":");
-                    String topic = (String) content.get("topic");
-                    String message = (String) content.get("msg");
-                    int id = Integer.valueOf((String) content.get("id"));
+                    String topic =  content.get("topic").getAsString();
+                    String message = content.get("msg").getAsString();
+                    int id = Integer.valueOf(content.get("id").getAsString());
 
                     int curCount = topicMap.get(topic).get();
                     if (curCount == 0) {
@@ -156,10 +162,10 @@ public class Subscriber {
 //                    int wrongId = topicMap.get(topic);
 //                    if (wrongId < id) {
 //                        //notify server message missing
-//                        JSONObject request = new JSONObject();
-//                        request.put("sender", subscriberAddr + ":" + subscriberPort);
-//                        request.put("action", "MISSING_MESSAGE");
-//                        request.put("content",  wrongId + ":" + (id - 1) );
+//                        JsonObject request = new JsonObject();
+//                        request.addProperty("sender", subscriberAddr + ":" + subscriberPort);
+//                        request.addProperty("action", "MISSING_MESSAGE");
+//                        request.addProperty("content",  wrongId + ":" + (id - 1) );
 //                        topicMap.put(topic, id);
 //                        try {
 //                            Socket socket = new Socket(serverID[0], Integer.valueOf(serverID[1]));
@@ -176,9 +182,7 @@ public class Subscriber {
 
                 ins.close();
                 socket.close();
-            } catch (ParseException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
+            }catch (IOException e) {
                 e.printStackTrace();
             }
         }
@@ -186,24 +190,19 @@ public class Subscriber {
 
     public static void main(String[] args) {
         try {
-            //SUBSCRIBER1
-            final String SUBSCRIBER1_ADDR = "127.0.0.1";
+            final String SUBSCRIBER_ADDR = "127.0.0.1";
             Scanner scanner = new Scanner(System.in);
             System.out.print("Please input port number: ");
-            int SUBSCRIBER1_PORT = scanner.nextInt();
+            int SUBSCRIBER_PORT = Integer.valueOf(scanner.nextLine());
             final String ZOOKEEPER_ADDR = "127.0.0.1";
             int ZOOKEEPER_PORT = 8889;
-            String TOPIC = "";
 
-            Subscriber subscriber1 = new Subscriber(SUBSCRIBER1_ADDR, SUBSCRIBER1_PORT, ZOOKEEPER_ADDR, ZOOKEEPER_PORT);
+            Subscriber subscriber1 = new Subscriber(SUBSCRIBER_ADDR, SUBSCRIBER_PORT, ZOOKEEPER_ADDR, ZOOKEEPER_PORT);
             subscriber1.getTopic();
-
-            subscriber1.registerTopic();
-            System.out.println("Subscriber on " + SUBSCRIBER1_ADDR + ":" + SUBSCRIBER1_PORT + " register with topic " + TOPIC);
+            String topic = scanner.nextLine();
+            subscriber1.registerTopic(topic);
+            System.out.println("Subscriber on " + SUBSCRIBER_ADDR + ":"+ SUBSCRIBER_PORT + " register with topic " + topic);
             subscriber1.start();
-
-            //SUBSCRIBER2
-            //SUBSCRIBER3
 
         } catch (IOException e) {
             e.printStackTrace();
